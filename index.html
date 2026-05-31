@@ -1092,6 +1092,13 @@ button.danger-btn:hover{background:var(--red);color:#fff}
 </div>
   </section>
 
+  <!-- Ko-fi -->
+  <div style="background:rgba(255,193,7,.07);border:1px solid rgba(255,193,7,.2);border-radius:var(--radius);padding:1.2rem 2rem;margin:0 2rem 1.5rem;text-align:center">
+    <div style="font-size:.88rem;font-weight:600;color:rgba(255,255,255,.85);margin-bottom:6px">☕ Blokly restera toujours gratuit et sans pub.</div>
+    <div style="font-size:.8rem;color:rgba(255,255,255,.55);margin-bottom:10px">Si l'app t'aide pendant tes examens, tu peux soutenir son développement avec un don sur Ko-fi. Chaque contribution aide à financer l'hébergement et les nouvelles fonctionnalités, et une partie est reversée à une bonne cause.</div>
+    <a href="https://ko-fi.com/bloklystudy" target="_blank" style="display:inline-block;padding:9px 24px;background:#FF5E5B;border-radius:8px;color:#fff;font-size:.85rem;font-weight:700;text-decoration:none">☕ Faire un don sur Ko-fi →</a>
+  </div>
+
   <!-- Features -->
   <section class="land-features">
     <div class="land-feat">
@@ -1442,6 +1449,12 @@ button.danger-btn:hover{background:var(--red);color:#fff}
         </div>
       </div>
     </div>
+    <div style="background:rgba(255,193,7,.07);border:1px solid rgba(255,193,7,.2);border-radius:var(--radius);padding:12px 16px;margin-bottom:10px;text-align:center">
+      <div style="font-size:.82rem;color:var(--text2);margin-bottom:8px">☕ Blokly est gratuit et sans pub. Si l'app t'aide pendant tes examens, un don aiderait grandement à financer l'hébergement et le développement.</div>
+      <a href="https://ko-fi.com/bloklystudy" target="_blank" style="display:inline-block;padding:8px 20px;background:#FF5E5B;border-radius:8px;color:#fff;font-size:.82rem;font-weight:700;text-decoration:none">☕ Soutenir sur Ko-fi →</a>
+      <div style="font-size:.7rem;color:var(--text3);margin-top:6px">Une partie des dons est reversée à une bonne cause 💙</div>
+    </div>
+
     <div style="background:linear-gradient(135deg,rgba(74,144,217,.08),rgba(99,102,241,.08));border:1px solid rgba(74,144,217,.2);border-radius:var(--radius);padding:12px 16px;margin-bottom:10px">
   <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
     <div style="display:flex;align-items:center;gap:10px">
@@ -1457,7 +1470,8 @@ button.danger-btn:hover{background:var(--red);color:#fff}
     💙 <strong style="color:var(--text)">Blokly est 100% gratuit et sans pub</strong> — il vit principalement grâce au bouche-à-oreille. Plus on est nombreux, plus l'app s'améliore : nouvelles fonctionnalités, corrections de bugs,... <span style="color:var(--blue);cursor:pointer;font-weight:600" onclick="navigator.share?navigator.share({title:'Blokly Study',text:'Un outil gratuit pour planifier ton blocus 🎓',url:'https://bastien-lp.github.io/BloklyStudy/'}):navigator.clipboard.writeText('https://bastien-lp.github.io/BloklyStudy/').then(()=>showToast('🔗 Lien copié !'))">Partage-le à tes amis de classe, ça prend 10 secondes →</span>
   </div>
 </div>
-  </div>
+
+</div>
 
 
 
@@ -1572,6 +1586,40 @@ button.danger-btn:hover{background:var(--red);color:#fff}
   <div class="section-title" style="margin:0">Temps restant avant les examens</div>
   <button class="tuto-btn" onclick="openTuto('exams')">❓ Tuto</button>
 </div><div class="eg" id="exam-countdown"></div></div>
+
+    <!-- CALCULATEUR DE MOYENNE -->
+    <div class="card" id="grade-calc-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
+        <div class="section-title" style="margin:0">🎯 Calculateur de moyenne</div>
+      </div>
+
+      <!-- Objectif de moyenne -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+        <label style="font-size:.8rem;color:var(--text2);font-weight:500">Objectif :</label>
+        <input id="calc-target" type="number" min="0" max="100" step="0.5" value="12" style="width:70px;padding:5px 8px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:.85rem;font-weight:600;text-align:center" oninput="renderGradeCalc()">
+        <div id="calc-target-status" style="font-size:.78rem;font-weight:600;padding:3px 10px;border-radius:20px"></div>
+      </div>
+
+      <!-- Matières et épreuves -->
+      <div id="grade-rows" style="display:flex;flex-direction:column;gap:12px;margin-bottom:14px"></div>
+
+      <!-- Résumé global -->
+      <div style="background:var(--bg3);border-radius:var(--radius);padding:14px;display:flex;gap:16px;flex-wrap:wrap;justify-content:space-around;text-align:center">
+        <div>
+          <div style="font-size:1.6rem;font-weight:800;color:var(--text)" id="calc-avg-display">—</div>
+          <div style="font-size:.7rem;color:var(--text3);margin-top:2px">Moyenne générale</div>
+        </div>
+        <div>
+          <div style="font-size:1.6rem;font-weight:800;color:var(--blue)" id="calc-ects-display">—</div>
+          <div style="font-size:.7rem;color:var(--text3);margin-top:2px">Crédits ECTS</div>
+        </div>
+      </div>
+
+      <!-- Bouton copier récap -->
+      <button onclick="copyGradeRecap()" style="margin-top:12px;width:100%;padding:8px;border:1px dashed var(--border);border-radius:var(--radius-sm);background:transparent;color:var(--text2);font-size:.78rem;cursor:pointer;transition:all .15s" onmouseover="this.style.borderColor='var(--blue)';this.style.color='var(--blue)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text2)'">
+        📋 Copier le récapitulatif
+      </button>
+    </div>
     
   </div>
 
@@ -1858,6 +1906,13 @@ button.danger-btn:hover{background:var(--red);color:#fff}
         <div class="who-card-text">L'architecture, le design, et chaque fonctionnalité ont été pensés et conçus par Bastien. Le développement a été réalisé en collaboration avec l'IA Claude d'Anthropic — une approche honnête et moderne du développement solo, alliant créativité humaine et puissance technique.</div>
       </div>
     </div>
+    <div style="background:rgba(255,193,7,.07);border:1px solid rgba(255,193,7,.2);border-radius:var(--radius);padding:1.4rem;margin-bottom:1rem;text-align:center">
+      <div style="font-size:1rem;font-weight:700;color:var(--text);margin-bottom:.6rem">☕ Soutenir Blokly Study</div>
+      <div style="font-size:.82rem;color:var(--text2);line-height:1.7;margin-bottom:.8rem">Blokly est entièrement gratuit, sans publicité et sans abonnement, et ça le restera. Le projet est développé seul, sur mon temps libre, avec l'envie sincère d'aider le maximum d'étudiants à passer leurs examens sereinement.<br><br>Si l'app t'a aidé, un don sur Ko-fi contribue directement à sa pérennité : hébergement, nouvelles fonctionnalités et corrections de bugs.</div>
+      <a href="https://ko-fi.com/bloklystudy" target="_blank" style="display:inline-block;padding:10px 28px;background:#FF5E5B;border-radius:8px;color:#fff;font-size:.9rem;font-weight:700;text-decoration:none;margin-bottom:10px">☕ Faire un don sur Ko-fi</a>
+      <div style="font-size:.75rem;color:var(--text3)">Une partie des dons est reversée à une bonne cause 💙</div>
+    </div>
+
     <div class="card">
       <div class="section-title">📬 Nous contacter</div>
       <div class="contact-type-btns">
@@ -1876,14 +1931,15 @@ button.danger-btn:hover{background:var(--red);color:#fff}
 <a href="https://www.tiktok.com/@blokly.study" target="_blank" class="ig-link" style="background:#010101">
   <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.28 8.28 0 004.84 1.56V6.78a4.85 4.85 0 01-1.07-.09z"/></svg>
   @blokly.study
-</a
+</a>
         <button class="primary" onclick="sendContact()">Envoyer</button>
       </div>
       <div style="text-align:center;margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--border)">
         <div class="who-version-badge">🛠 Version 27 · 29/04/2026 · Blokly Study</div>
       </div>
     </div>
-  </div>
+
+    </div>
 
   <!-- STUDY -->
   <div id="page-study" class="page">
@@ -1906,8 +1962,7 @@ button.danger-btn:hover{background:var(--red);color:#fff}
           <option value="custom">⚙️ Personnalisé…</option>
         </select>
         <input type="number" id="study-dur-custom" min="1" max="600" placeholder="min" style="display:none;width:70px;padding:6px 8px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:.85rem" onchange="resetTimer()">
-        <button class="tbtn" onclick="enterFocusMode()" style="padding:7px 12px;font-size:.8rem">🎯 Focus</button>
-      </div>
+        </div>
       <div id="pomo-status" style="display:none;font-size:.82rem;color:var(--text2);margin-bottom:10px;padding:7px 10px;background:var(--bg2);border-radius:var(--radius-sm);border:1px solid var(--border)"></div>
       <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span style="font-size:.78rem;color:var(--text3)">XP potentiel :</span>
@@ -1934,6 +1989,7 @@ button.danger-btn:hover{background:var(--red);color:#fff}
             <button class="tbtn go" id="btn-start" onclick="timerToggle()">▶ Démarrer</button>
             <button class="tbtn" onclick="resetTimer()">↺</button>
           </div>
+          <button class="tbtn" onclick="enterFocusMode()" style="padding:7px 12px;font-size:.8rem;width:100%">🎯 Focus</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:10px">
           <div class="fcard" style="flex:1">
@@ -1973,6 +2029,9 @@ button.danger-btn:hover{background:var(--red);color:#fff}
         </div>
       </div>
     </div>
+
+
+
   </div>
 </div>
 
@@ -2033,7 +2092,10 @@ button.danger-btn:hover{background:var(--red);color:#fff}
     <div class="fr"><label>Date d'examen</label><input id="e-date" type="date"></div>
     <div class="fr"><label>Couleur</label><div class="color-swatches" id="color-swatches"></div><input type="hidden" id="e-color" value="#4A90D9"></div>
     <div class="fr"><label>Chapitres</label><input id="e-chaps" type="number" min="1" max="30" value="6"></div>
-    
+    <div style="display:flex;gap:10px">
+      <div class="fr" style="flex:1;margin-bottom:0"><label>Crédits ECTS <span style="font-size:.7rem;color:var(--text3)">(optionnel)</span></label><input id="e-ects" type="number" min="1" max="30" placeholder="ex: 5"></div>
+      <div class="fr" style="flex:1;margin-bottom:0"><label>Coefficient <span style="font-size:.7rem;color:var(--text3)">(optionnel)</span></label><input id="e-coeff" type="number" min="0.1" max="10" step="0.1" placeholder="ex: 2"></div>
+    </div>
     <div class="brow"><button class="ghost" onclick="closeModal('modal-exam')">Annuler</button><button class="primary" onclick="addExam()">Ajouter</button></div>
   </div>
 </div>
@@ -2107,6 +2169,10 @@ button.danger-btn:hover{background:var(--red);color:#fff}
     <div class="fr"><label>Nom</label><input id="rename-subj-input" placeholder="ex: Mathématiques"></div>
     <div class="fr"><label>Date d'examen</label><input id="rename-subj-date" type="date"></div>
     <div class="fr"><label>Couleur</label><div class="color-swatches" id="rename-color-swatches"></div><input type="hidden" id="rename-subj-color" value="#4A90D9"></div>
+    <div style="display:flex;gap:10px">
+      <div class="fr" style="flex:1;margin-bottom:0"><label>Crédits ECTS <span style="font-size:.7rem;color:var(--text3)">(optionnel)</span></label><input id="rename-subj-ects" type="number" min="1" max="30" placeholder="ex: 5"></div>
+      <div class="fr" style="flex:1;margin-bottom:0"><label>Coefficient <span style="font-size:.7rem;color:var(--text3)">(optionnel)</span></label><input id="rename-subj-coeff" type="number" min="0.1" max="10" step="0.1" placeholder="ex: 2"></div>
+    </div>
     <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
       <div style="font-size:.78rem;font-weight:600;color:var(--danger-text);margin-bottom:8px">⚠️ Zone dangereuse</div>
       <button class="danger-btn" style="width:100%" onclick="openDelSubjFromEdit()">🗑 Supprimer cette matière</button>
@@ -3858,7 +3924,7 @@ window._selectSwatch=(color,el)=>{ document.getElementById('e-color').value=colo
 document.addEventListener('keydown',e=>{ const tag=e.target.tagName; if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT')return; if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();undo();return;} if((e.ctrlKey||e.metaKey)&&e.key==='y'){e.preventDefault();redo();return;} if(e.code==='Space'){e.preventDefault();timerToggle();} if(e.code==='KeyN')openBlockModal(); if(e.code==='Escape'&&focusModeActive)exitFocusMode(); });
 document.addEventListener('click',e=>{ if(!document.getElementById('ctx').contains(e.target)) hideCtx(); });
 
-function switchTab(tp){ document.querySelectorAll('.tab,.tab-study').forEach(el=>el.classList.remove('active')); document.querySelectorAll('.tab,.tab-study').forEach(el=>{if(el.dataset.tab===tp)el.classList.add('active');}); document.querySelectorAll('.page').forEach(p=>p.classList.remove('active')); const pg=document.getElementById('page-'+tp);if(pg)pg.classList.add('active'); if(tp==='planning')renderPlanning(); if(tp==='agenda')renderAgenda();
+function switchTab(tp){ document.querySelectorAll('.tab,.tab-study').forEach(el=>el.classList.remove('active')); document.querySelectorAll('.tab,.tab-study').forEach(el=>{if(el.dataset.tab===tp)el.classList.add('active');}); document.querySelectorAll('.page').forEach(p=>p.classList.remove('active')); const pg=document.getElementById('page-'+tp);if(pg)pg.classList.add('active'); if(tp==='planning')renderPlanning(); if(tp==='agenda')renderAgenda(); if(tp==='exams')renderGradeCalc();
 if(tp==='progress'){renderProgress();renderProgChart();renderAgenda();} if(tp==='progress'){renderProgress();renderProgChart();renderAgenda();} if(tp==='confidence'){renderConf();renderPredict();} if(tp==='syntheses')renderSynth(); if(tp==='flashcards')initFlashcardsPage(); if(tp==='repetition')renderRepetition(); if(tp==='exams'){renderExams();renderOverload('overload-bar2');} if(tp==='stats'){renderXPStats();renderPieChart();renderBadges();renderWeeklyRecap();renderHeat('heatmap-stats');renderThemeButtons();renderLeaderboard();} if(tp==='groups')renderGroups();
 if(tp==='todo'){renderTodos();}
 if(tp==='journal')renderJournal(); if(tp==='study')renderStudy(); bubbleHidden=false;if(timerOn)updateBubble(true,false); }
@@ -4038,7 +4104,7 @@ function showConfirm(title,msg,onOk){ document.getElementById('confirm-title').t
 function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 function openAddExam(){renderSwatches();document.getElementById('e-name').value='';document.getElementById('e-date').value='';document.getElementById('e-chaps').value=6;openModal('modal-exam');}
-function addExam(){ const name=document.getElementById('e-name').value.trim(); const date=document.getElementById('e-date').value; const color=document.getElementById('e-color').value; const chaps=parseInt(document.getElementById('e-chaps').value)||6; const total=8; if(!name){showToast('Donne un nom à la matière.');return;} subjects.push({id:nid++,name,color,date,chaps,chapsDone:0,totalBlocks:total,doneBlocks:0,conf:Array(chaps).fill(0),chapters:Array.from({length:chaps},(_,i)=>({name:'Chapitre '+(i+1),status:'todo',note:''}))}); closeModal('modal-exam');renderPlanning();renderExams();populateStudySubjects();populateJournalSubjects();scheduleSave(); showToast('✅ Matière ajoutée !'); }
+function addExam(){ const name=document.getElementById('e-name').value.trim(); const date=document.getElementById('e-date').value; const color=document.getElementById('e-color').value; const chaps=parseInt(document.getElementById('e-chaps').value)||6; const ects=parseFloat(document.getElementById('e-ects').value)||null; const coeff=parseFloat(document.getElementById('e-coeff').value)||null; const total=8; if(!name){showToast('Donne un nom à la matière.');return;} subjects.push({id:nid++,name,color,date,chaps,chapsDone:0,totalBlocks:total,doneBlocks:0,conf:Array(chaps).fill(0),chapters:Array.from({length:chaps},(_,i)=>({name:'Chapitre '+(i+1),status:'todo',note:''})),ects,coeff,epreuves:[]}); closeModal('modal-exam');renderPlanning();renderExams();populateStudySubjects();populateJournalSubjects();scheduleSave(); showToast('✅ Matière ajoutée !'); }
 function openBlockModal(){
   editId=null;
   document.getElementById('bmt').textContent='Bloc de révision';
@@ -4378,6 +4444,8 @@ function openRenameSubj(id,evt){
   pendingRenameSubjId=id;
   document.getElementById('rename-subj-input').value=s.name;
   document.getElementById('rename-subj-date').value=s.date||'';
+  document.getElementById('rename-subj-ects').value=s.ects||'';
+  document.getElementById('rename-subj-coeff').value=s.coeff||'';
   renderRenameSwatches(s.color||'#4A90D9');
   openModal('modal-rename-subj');
 }
@@ -4401,6 +4469,9 @@ function confirmRenameSubj(){
   s.name=newName;
   s.date=document.getElementById('rename-subj-date').value||s.date;
   s.color=document.getElementById('rename-subj-color').value||s.color;
+  s.ects=parseFloat(document.getElementById('rename-subj-ects').value)||s.ects||null;
+  s.coeff=parseFloat(document.getElementById('rename-subj-coeff').value)||s.coeff||null;
+  if(!s.epreuves) s.epreuves=[];
   // Mettre à jour la couleur des blocs associés
   blocks.filter(b=>b.type==='rev'&&b.subj===s.id);
   pendingRenameSubjId=null;
@@ -5466,6 +5537,14 @@ function devResetAll() {
   showToast('🗑 Données réinitialisées.');
 }
 
+function toggleGradeCard(subjId, headerEl){
+  const body = headerEl.parentElement.querySelector('.grade-body');
+  const chevron = headerEl.querySelector('.grade-chevron');
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  if(chevron) chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
+}
+
 
 Object.assign(window, {
   showLanding, showAuthPage,
@@ -5498,8 +5577,286 @@ Object.assign(window, {
   openDelSubjFromEdit, deleteSREntry, renderRenameSwatches,
   handleDevLogoClick, checkDevCode, closeDevModal,
   devUnlockAll, devMaxXP, devUnlockBadges, devResetAll,
+  renderGradeCalc, addEpreuve, removeEpreuve, updateEpreuve, clearSimEpreuve, copyGradeRecap, toggleGradeCard, toggleGradeCard,
 });
 
+// ══════════════════════════════════
+// CALCULATEUR DE MOYENNE
+// ══════════════════════════════════
+
+function calcSubjectNote(s){
+  const epreuves = (s.epreuves||[]).filter(e => e.note !== '' && e.note !== null && e.note !== undefined);
+  if(!epreuves.length) return null;
+  const totalCoeff = epreuves.reduce((a,e) => a + (parseFloat(e.coeff)||1), 0);
+  const weighted = epreuves.reduce((a,e) => a + parseFloat(e.note) * (parseFloat(e.coeff)||1), 0);
+  return weighted / totalCoeff;
+}
+
+function calcSubjectNoteSim(s){
+  const epreuves = (s.epreuves||[]).map(e => {
+    const sim = e.sim !== '' && e.sim !== null && e.sim !== undefined ? e.sim : e.note;
+    return {...e, note: sim};
+  }).filter(e => e.note !== '' && e.note !== null && e.note !== undefined);
+  if(!epreuves.length) return null;
+  const totalCoeff = epreuves.reduce((a,e) => a + (parseFloat(e.coeff)||1), 0);
+  const weighted = epreuves.reduce((a,e) => a + parseFloat(e.note) * (parseFloat(e.coeff)||1), 0);
+  return weighted / totalCoeff;
+}
+
+function noteColor(note, max){
+  if(note === null) return 'var(--text3)';
+  const pct = note / (max||20);
+  return pct >= 0.7 ? 'var(--green)' : pct >= 0.5 ? 'var(--orange)' : 'var(--red)';
+}
+
+function calcSubjectNoteSim2(s){
+  const ep = (s.epreuves||[]).filter(e => {
+    const note = (e.sim !== '' && e.sim !== null && e.sim !== undefined) ? e.sim : e.note;
+    return note !== '' && note !== null && note !== undefined && !isNaN(parseFloat(note));
+  });
+  if(!ep.length) return null;
+  const totalPct = ep.reduce((a,e) => a + (parseFloat(e.pct)||100), 0);
+  if(totalPct <= 0) return null;
+  const weighted = ep.reduce((a,e) => {
+    const note = (e.sim !== '' && e.sim !== null && e.sim !== undefined) ? parseFloat(e.sim) : parseFloat(e.note);
+    const max = parseFloat(e.max) || 20;
+    const pct = parseFloat(e.pct) || 100;
+    return a + (note / max * 20) * pct;
+  }, 0);
+  return weighted / totalPct;
+}
+
+function renderGradeCalc(){
+  if(!document.getElementById('grade-rows')) return;
+  const target = parseFloat(document.getElementById('calc-target').value) || 12;
+
+  let totalWeightedScore = 0;
+  let totalWeight = 0;
+  let totalEcts = 0;
+  let earnedEcts = 0;
+
+  const html = subjects.map(s => {
+    if(!s.epreuves) s.epreuves = [];
+    // Migration ancien format (coeff) vers nouveau format (pct + max)
+    s.epreuves = s.epreuves.map(e => {
+      if(e.pct === undefined || e.pct === null || e.pct === '') e.pct = 100;
+      if(e.max === undefined || e.max === null || e.max === '') e.max = 20;
+      if(typeof e.name !== 'string') e.name = String(e.name || '');
+      return e;
+    });
+    const weight = s.ects || s.coeff || 1;
+    const noteAffichee = calcSubjectNoteSim2(s);
+
+    if(noteAffichee !== null){
+      totalWeightedScore += noteAffichee * weight;
+      totalWeight += weight;
+      if(s.ects && noteAffichee >= 10) earnedEcts += s.ects;
+    }
+    if(s.ects) totalEcts += s.ects;
+
+    const noteColor_ = noteAffichee !== null
+      ? (noteAffichee >= 14 ? 'var(--green)' : noteAffichee >= 10 ? 'var(--orange)' : 'var(--red)')
+      : 'var(--text3)';
+
+    const totalPct = s.epreuves.reduce((a,e) => a + (parseFloat(e.pct)||100), 0);
+    const pctLeft = Math.max(0, 100 - totalPct);
+    const hasSim = s.epreuves.some(e => e.sim !== '' && e.sim !== null && e.sim !== undefined);
+
+    const epReuvesHtml = s.epreuves.map((e,i) => {
+      const noteVal = (e.note !== '' && e.note !== null && e.note !== undefined) ? e.note : '';
+      const simVal = (e.sim !== '' && e.sim !== null && e.sim !== undefined) ? e.sim : '';
+      const maxVal = e.max || 20;
+      const pctVal = e.pct || '';
+      const noteNum = parseFloat(noteVal);
+      const noteClr = noteVal !== '' ? (noteNum/maxVal >= 0.7 ? 'var(--green)' : noteNum/maxVal >= 0.5 ? 'var(--orange)' : 'var(--red)') : 'var(--text)';
+      const simNum = parseFloat(simVal);
+      const simClr = simVal !== '' ? (simNum/maxVal >= 0.7 ? '#27AE60' : simNum/maxVal >= 0.5 ? '#E67E22' : '#E74C3C') : '#9B59B6';
+
+      const simBlock = simVal !== ''
+        ? `<div style="text-align:center">
+            <div style="font-size:.65rem;color:rgba(155,89,182,.8);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">🧪 Simulation</div>
+            <div style="display:flex;align-items:center;gap:4px">
+              <input type="number" placeholder="—"
+                data-sid="${s.id}" data-idx="${i}" data-field="sim"
+                value="${simVal}"
+                style="width:58px;padding:5px 4px;border-radius:4px;border:1px solid rgba(155,89,182,.35);background:rgba(155,89,182,.06);color:${simClr};font-size:.85rem;font-weight:700;text-align:center"
+                onchange="updateEpreuve(parseInt(this.dataset.sid),parseInt(this.dataset.idx),this.dataset.field,this.value)">
+              <button onclick="clearSimEpreuve(${s.id},${i})" title="Effacer la simulation"
+                style="background:rgba(155,89,182,.12);border:1px solid rgba(155,89,182,.3);border-radius:4px;padding:4px 6px;cursor:pointer;font-size:.7rem;color:#9B59B6">✕</button>
+            </div>
+           </div>`
+        : `<div style="text-align:center">
+            <div style="font-size:.65rem;color:rgba(155,89,182,.8);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">🧪 Simulation</div>
+            <input type="number" placeholder="—"
+              data-sid="${s.id}" data-idx="${i}" data-field="sim"
+              value=""
+              style="width:65px;padding:5px 6px;border-radius:4px;border:1px solid rgba(155,89,182,.25);background:rgba(155,89,182,.04);color:#9B59B6;font-size:.88rem;font-weight:700;text-align:center"
+              onchange="updateEpreuve(parseInt(this.dataset.sid),parseInt(this.dataset.idx),this.dataset.field,this.value)">
+           </div>`;
+
+      return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;display:grid;grid-template-columns:1fr 95px 80px auto auto;gap:8px;align-items:end">
+        <div>
+          <div style="font-size:.65rem;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Nom de l'épreuve</div>
+          <input placeholder="ex: Interro chapitre 3"
+            data-sid="${s.id}" data-idx="${i}" data-field="name"
+            value="${String(e.name||'').replace(/"/g,'&quot;')}"
+            style="width:100%;padding:5px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:.82rem"
+            onchange="updateEpreuve(parseInt(this.dataset.sid),parseInt(this.dataset.idx),this.dataset.field,this.value)">
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:.65rem;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Note obtenue</div>
+          <div style="display:flex;align-items:center;gap:3px">
+            <input type="number" placeholder="—"
+              data-sid="${s.id}" data-idx="${i}" data-field="note"
+              value="${noteVal}"
+              style="width:46px;padding:5px 4px;border-radius:4px;border:1px solid var(--border);background:var(--bg2);color:${noteClr};font-size:.85rem;font-weight:700;text-align:center"
+              onchange="updateEpreuve(parseInt(this.dataset.sid),parseInt(this.dataset.idx),this.dataset.field,this.value)">
+            <span style="font-size:.72rem;color:var(--text3)">/</span>
+            <input type="number" placeholder="20"
+              data-sid="${s.id}" data-idx="${i}" data-field="max"
+              value="${maxVal}"
+              style="width:38px;padding:5px 4px;border-radius:4px;border:1px solid var(--border);background:var(--bg2);color:var(--text2);font-size:.75rem;text-align:center"
+              onchange="updateEpreuve(parseInt(this.dataset.sid),parseInt(this.dataset.idx),this.dataset.field,this.value)">
+          </div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:.65rem;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Poids note finale</div>
+          <div style="display:flex;align-items:center;gap:2px">
+            <input type="number" min="0" max="100" placeholder="—"
+              data-sid="${s.id}" data-idx="${i}" data-field="pct"
+              value="${pctVal}"
+              style="width:48px;padding:5px 4px;border-radius:4px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:.85rem;font-weight:600;text-align:center"
+              onchange="updateEpreuve(parseInt(this.dataset.sid),parseInt(this.dataset.idx),this.dataset.field,this.value)">
+            <span style="font-size:.72rem;color:var(--text3)">%</span>
+          </div>
+        </div>
+        ${simBlock}
+        <button onclick="removeEpreuve(${s.id},${i})" title="Supprimer"
+          style="background:var(--danger-bg);border:none;border-radius:4px;padding:5px 7px;cursor:pointer;font-size:.72rem;color:var(--danger-text);align-self:end">🗑</button>
+      </div>`;
+    }).join('');
+
+    const pctWarning = s.epreuves.length > 0 && Math.abs(totalPct - 100) > 0.1
+      ? `<div style="font-size:.72rem;color:var(--warn-text);background:var(--warn-bg);border-radius:4px;padding:4px 8px;margin:0 12px 8px;text-align:center">
+           ⚠️ Total des poids : ${totalPct}% ${totalPct < 100 ? '('+pctLeft+'% non attribué)' : '(dépasse 100%)'}
+         </div>` : '';
+
+    const noteBar = noteAffichee !== null
+      ? `<div style="height:4px;background:var(--bg3);margin:0 14px 10px;border-radius:20px;overflow:hidden">
+           <div style="height:100%;width:${Math.min(100,noteAffichee/20*100)}%;background:${noteColor_};border-radius:20px;transition:width .4s"></div>
+         </div>` : '';
+
+    return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;${s.epreuves.length?'border-bottom:1px solid var(--border)':''}"
+        onclick="toggleGradeCard(${s.id}, this)">
+        <div style="width:12px;height:12px;border-radius:50%;background:${s.color};flex-shrink:0"></div>
+        <div style="flex:1">
+          <div style="font-size:.88rem;font-weight:700;color:var(--text)">${s.name}</div>
+          <div style="font-size:.7rem;color:var(--text3);margin-top:1px">${s.epreuves.length} épreuve${s.epreuves.length!==1?'s':''} · ${s.ects ? s.ects+' ECTS' : s.coeff ? 'coeff. '+s.coeff : 'coeff. 1'}</div>
+        </div>
+        ${hasSim ? '<span style="font-size:.68rem;background:rgba(155,89,182,.12);color:#9B59B6;border-radius:10px;padding:2px 8px;font-weight:600">🧪 simulation active</span>' : ''}
+        <div style="text-align:right;margin-right:6px">
+          <div style="font-size:1.3rem;font-weight:800;color:${noteColor_}">${noteAffichee !== null ? noteAffichee.toFixed(1)+'/20' : '—'}</div>
+          <div style="font-size:.65rem;color:var(--text3)">${noteAffichee !== null ? (noteAffichee>=10?'✓ réussi':'✗ en échec') : 'pas encore noté'}</div>
+        </div>
+        <div style="font-size:.8rem;color:var(--text3);transition:transform .2s" class="grade-chevron">▼</div>
+      </div>
+      <div class="grade-body" style="display:none">
+        ${noteBar}
+        ${pctWarning}
+        ${s.epreuves.length ? `<div style="display:flex;flex-direction:column;gap:6px;padding:10px 12px">${epReuvesHtml}</div>` : ''}
+        <div style="padding:8px 12px 12px">
+          <button onclick="addEpreuve(${s.id})"
+            style="width:100%;padding:8px;border:1px dashed var(--border);border-radius:var(--radius-sm);background:transparent;color:var(--text3);font-size:.78rem;cursor:pointer;transition:all .15s"
+            onmouseover="this.style.borderColor='var(--blue)';this.style.color='var(--blue)'"
+            onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text3)'">
+            + Ajouter une épreuve
+          </button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('grade-rows').innerHTML = html || '<div style="color:var(--text3);font-size:.82rem;text-align:center;padding:1.5rem">Ajoute des matières pour commencer.</div>';
+
+  const avg = totalWeight > 0 ? (totalWeightedScore / totalWeight) : null;
+  const avgEl = document.getElementById('calc-avg-display');
+  if(avg !== null){
+    avgEl.textContent = avg.toFixed(2);
+    avgEl.style.color = avg >= 14 ? 'var(--green)' : avg >= 10 ? 'var(--orange)' : 'var(--red)';
+  } else {
+    avgEl.textContent = '—';
+    avgEl.style.color = 'var(--text)';
+  }
+
+  document.getElementById('calc-ects-display').textContent = totalEcts > 0 ? earnedEcts+'/'+totalEcts : '—';
+
+  const statusEl = document.getElementById('calc-target-status');
+  if(avg !== null){
+    if(avg >= target){ statusEl.textContent='✅ Objectif atteint'; statusEl.style.background='var(--success-bg)'; statusEl.style.color='var(--success-text)'; }
+    else { statusEl.textContent='⚠️ En dessous de l\'objectif'; statusEl.style.background='var(--warn-bg)'; statusEl.style.color='var(--warn-text)'; }
+  } else { statusEl.textContent=''; statusEl.style.background='transparent'; }
+}
+
+function addEpreuve(subjId){
+  const s = subjects.find(x => x.id === subjId);
+  if(!s) return;
+  if(!s.epreuves) s.epreuves = [];
+  s.epreuves.push({name:'', note:'', max:20, pct:100, sim:''});
+  scheduleSave();
+  renderGradeCalc();
+}
+
+function removeEpreuve(subjId, idx){
+  const s = subjects.find(x => x.id === subjId);
+  if(!s || !s.epreuves) return;
+  s.epreuves.splice(idx, 1);
+  scheduleSave();
+  renderGradeCalc();
+}
+
+function updateEpreuve(subjId, idx, field, val){
+  const s = subjects.find(x => x.id === subjId);
+  if(!s || !s.epreuves || !s.epreuves[idx]) return;
+  s.epreuves[idx][field] = val === '' ? '' : isNaN(val) ? val : parseFloat(val);
+  scheduleSave();
+  renderGradeCalc();
+}
+
+function clearSimEpreuve(subjId, idx){
+  const s = subjects.find(x => x.id === subjId);
+  if(!s || !s.epreuves || !s.epreuves[idx]) return;
+  s.epreuves[idx].sim = '';
+  scheduleSave();
+  renderGradeCalc();
+}
+
+function copyGradeRecap(){
+  const target = document.getElementById('calc-target').value;
+  const avg = document.getElementById('calc-avg-display').textContent;
+  const ects = document.getElementById('calc-ects-display').textContent;
+  let text = `📊 Récapitulatif Blokly Study\nObjectif : ${target}\nMoyenne générale : ${avg}\nECTS : ${ects}\n\n`;
+  subjects.forEach(s => {
+    const note = calcSubjectNoteSim(s);
+    const noteStr = note !== null ? note.toFixed(1) : 'Non noté';
+    const weight = s.ects ? s.ects+' ECTS' : s.coeff ? 'coeff. '+s.coeff : '';
+    text += `• ${s.name}${weight?' ('+weight+')':''} : ${noteStr}\n`;
+    (s.epreuves||[]).forEach(e => {
+      const val = e.sim !== '' && e.sim !== null && e.sim !== undefined ? e.sim : e.note;
+      text += `   - ${e.name||'Épreuve'} : ${val !== '' && val !== null ? val : '—'} (coeff ${e.coeff||1})\n`;
+    });
+  });
+  navigator.clipboard.writeText(text).then(()=>showToast('📋 Récapitulatif copié !'));
+}
+
+function setCalcMode(mode){
+  calcMode = mode;
+  document.getElementById('calc-mode-real').classList.toggle('active', mode==='real');
+  document.getElementById('calc-mode-sim').classList.toggle('active', mode==='sim');
+  const banner = document.getElementById('sim-banner');
+  banner.style.display = mode==='sim' ? 'block' : 'none';
+  renderGradeCalc();
+}
 
 
 </script>
