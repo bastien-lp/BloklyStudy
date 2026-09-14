@@ -1,0 +1,70 @@
+.masonry-list {
+  position: relative;
+  width: 100%;
+  min-height: 200px;
+}
+
+.masonry-item {
+  position: absolute;
+  padding: 8px;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.masonry-card {
+  width: 100%;
+  height: 100%;
+  border-radius: 14px;
+  padding: 14px;
+  box-sizing: border-box;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color .2s, background .2s;
+  overflow: hidden;
+  position: relative;
+}
+
+.masonry-card:hover {
+  background: var(--bg-card-hover);
+}
+
+.masonry-card .card-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  align-self: flex-end;
+}
+
+.masonry-card .card-question {
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.masonry-card .card-answer {
+  font-size: .72rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+  margin-top: auto;
+}
+
+.masonry-card .card-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity .15s;
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.masonry-card:hover .card-actions {
+  opacity: 1;
+}

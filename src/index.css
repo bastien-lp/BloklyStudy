@@ -1,0 +1,63 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+html, body, #root {
+  width: 100%;
+  min-height: 100vh;
+}
+html {
+  font-size: 16px;
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+button {
+  font-family: inherit;
+}
+input {
+  font-family: inherit;
+}
+:root {
+  --space:          0.85rem;
+  --space-lg:       1.2rem;
+  --card-pad:       1rem 1.1rem;
+  --anim-duration:  0.3s;
+  --anim-ease:      cubic-bezier(.4,0,.2,1);
+  --anim-scale:     1.02;
+  --block-opacity:  0.87;
+  --border-width:   1px;
+  }
+
+/* ── DENSITY ── */
+.density-compact .card, .density-compact [class*="card"], .density-compact section { padding: var(--card-pad) !important; gap: var(--space) !important; }
+.density-airy    .card, .density-airy    [class*="card"], .density-airy    section { padding: var(--card-pad) !important; gap: var(--space-lg) !important; }
+
+/* ── ANIMATIONS ── */
+.anim-none * { transition: none !important; animation: none !important; }
+.anim-vivid button:hover, .anim-vivid [role="button"]:hover { transform: scale(var(--anim-scale)) translateY(-2px) !important; }
+.anim-none  button:hover, .anim-none  [role="button"]:hover { transform: none !important; }
+
+/* ── RADIUS ── */
+.radius-sharp  .card, .radius-sharp  button, .radius-sharp  input, .radius-sharp  select { border-radius: var(--radius) !important; }
+.radius-bubbly .card, .radius-bubbly button, .radius-bubbly input, .radius-bubbly select { border-radius: var(--radius) !important; }
+
+/* ── BLOCK OPACITY ── */
+nav, [class*="nav"], [class*="sidebar"], [class*="panel"] { opacity: var(--block-opacity); }
+
+/* ── BORDER WIDTH ── */
+*, *::before, *::after { border-width: var(--border-width) !important; }
+/* ── REDUCED MOTION ───────────────────────────────────────────────────────
+   The app leans on animation heavily, including a dozen looping ones that
+   never stop (growing bamboo, pulsing rings, floating crowns). For anyone who
+   asked their OS to reduce motion — and for battery on mobile — collapse them
+   to a single frame instead of removing the elements. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

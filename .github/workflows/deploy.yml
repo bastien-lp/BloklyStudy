@@ -1,0 +1,64 @@
+# Build the Vite app and publish it to GitHub Pages.
+#
+# Site: https://bastien-lp.github.io/BloklyStudy/
+#
+# PREREQUISITE (one-time, before the first push that includes this file):
+#   Repository Settings → Pages → Build and deployment → Source: "GitHub Actions".
+#   While the source is still "Deploy from a branch", GitHub would serve the raw
+#   source files of `main` (index.html pointing at /src/main.jsx) — a blank site.
+#
+# Only `npm run build` runs here, not the linter: the codebase has pre-existing
+# lint errors that would otherwise block every deployment.
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two deployments race; a newer push waits for the running one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          # Vite 8 requires Node ^20.19 or >=22.12.
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
