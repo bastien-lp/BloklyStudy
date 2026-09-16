@@ -15,9 +15,15 @@ html, body {
 html, body, #root {
   width: 100%;
   /* dvh tracks the *visible* viewport, so the layout no longer ends short of
-     the screen when mobile browser chrome hides. vh stays as the fallback. */
-  min-height: 100vh;
+     the screen when mobile browser chrome hides. */
   min-height: 100dvh;
+}
+/* Fallback for browsers without dvh (pre-2023). Kept in its own block: a
+   second min-height inside the rule above is dropped by the CSS minifier. */
+@supports not (min-height: 100dvh) {
+  html, body, #root {
+    min-height: 100vh;
+  }
 }
 html {
   font-size: 16px;
