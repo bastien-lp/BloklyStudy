@@ -3,9 +3,21 @@
   margin: 0;
   padding: 0;
 }
+/* The page canvas itself has to carry the theme background. Without this, html
+   and body kept the browser default (white): on mobile, rubber-band scrolling
+   and the space freed by a retracting URL bar showed white bands above and
+   below the app, whose dark background is painted by an inner element only.
+   --bg-base is set on :root by applyTheme; the literal is the first-paint
+   fallback, before the theme is applied. */
+html, body {
+  background-color: var(--bg-base, #0a0a18);
+}
 html, body, #root {
   width: 100%;
+  /* dvh tracks the *visible* viewport, so the layout no longer ends short of
+     the screen when mobile browser chrome hides. vh stays as the fallback. */
   min-height: 100vh;
+  min-height: 100dvh;
 }
 html {
   font-size: 16px;
