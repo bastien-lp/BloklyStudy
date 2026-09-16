@@ -31,6 +31,7 @@ import { GroupSessionEngine } from '../components/GroupSessionEngine';
 import { ChronoStack } from '../components/ChronoStack';
 import { reportSaveError } from '../lib/notify';
 import { isAdmin, ADMIN_UIDS } from '../lib/admin';
+import { auditBadges } from '../lib/badgeAudit';
 
 // Each tab is a separate chunk, loaded the first time it is opened. This keeps
 // the initial authenticated bundle small — a user who never opens Stats or the
@@ -420,6 +421,7 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
   const [showAddSubject, setShowAddSubject] = useState(false);
   const [showThemeEditor, setShowThemeEditor] = useState(false);
   const [subjects, setSubjects] = useState([]);
+  const badgeAuditRef = useRef(false); // retroactive badge catch-up runs once per session
   const [devClicks, setDevClicks]       = useState(0);
   const [devCodeInput, setDevCodeInput] = useState('');
   const [showDevCode, setShowDevCode]   = useState(false);
@@ -537,6 +539,14 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
         if (d.level !== undefined) setLevel(d.level);
         setSubjects(d.subjects || []);
         if (d.profile?.pseudo) setPseudo(d.profile.pseudo);
+
+        // Badges added to the catalogue after a threshold was already passed
+        // are never re-checked by the Cloud Function, so they stayed locked.
+        // Catch them up once per session, from this first real snapshot.
+        if (!badgeAuditRef.current) {
+          badgeAuditRef.current = true;
+          auditBadges(user.uid, d);
+        }
       }
     });
     return unsub;

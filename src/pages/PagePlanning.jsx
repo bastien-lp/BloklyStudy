@@ -17,6 +17,10 @@ import { doc, onSnapshot, updateDoc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import MonthView from '../components/MonthView';
 import { GuidedTour, useGuidedTour, TourButton } from '../components/GuidedTour';
+import {
+  Plus, Pencil, BookOpen, Target, CheckSquare, Square, ArrowDown, Trash2,
+  ClipboardList, Save, MapPin, Printer, Settings, GraduationCap, Check, RotateCcw, Undo2, Redo2,
+} from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { reportSaveError } from '../lib/notify';
 
@@ -131,19 +135,24 @@ function BlockModal({ block, weekStart, subjects, onSave, onClose, mode = 'add' 
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h3 style={{ color: 'var(--text-primary)', fontWeight: 800, fontSize: '1rem', margin: 0 }}>
-            {mode === 'add' ? `➕ ${t('planning.newBlock')}` : `✏️ ${t('planning.editBlock')}`}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+              {mode === 'add' ? <Plus size={15} strokeWidth={2.4} /> : <Pencil size={14} strokeWidth={2.2} />}
+              {mode === 'add' ? t('planning.newBlock') : t('planning.editBlock')}
+            </span>
           </h3>
           <button aria-label="Fermer" onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.3rem', cursor: 'pointer' }}>×</button>
         </div>
 
         {/* Type toggle */}
         <div style={{ display: 'flex', gap: 4, background: 'var(--bg-card)', padding: 3, borderRadius: 10, border: '1px solid var(--border)' }}>
-          {[{ v: false, l: `📚 ${t('planning.typeRev')}` }, { v: true, l: `🎯 ${t('planning.typeCustom')}` }].map(({ v, l }) => (
+          {[{ v: false, Icon: BookOpen, l: t('planning.typeRev') }, { v: true, Icon: Target, l: t('planning.typeCustom') }].map(({ v, Icon, l }) => (
             <button key={String(v)} onClick={() => setIsCustom(v)}
               style={{ flex: 1, padding: '6px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: '.78rem', fontWeight: 500,
                 background: isCustom === v ? 'var(--accent-subtle)' : 'transparent',
                 color: isCustom === v ? 'var(--accent)' : 'var(--text-muted)' }}>
-              {l}
+              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                <Icon size={13} strokeWidth={2.2} /> {l}
+              </span>
             </button>
           ))}
         </div>
@@ -226,7 +235,9 @@ function BlockModal({ block, weekStart, subjects, onSave, onClose, mode = 'add' 
                       border: `1px solid ${sel ? `${subj.color}70` : 'var(--border)'}`,
                       background: sel ? `${subj.color}22` : 'transparent',
                       color: sel ? 'var(--text-primary)' : 'var(--text-muted)', fontSize: '.72rem', cursor: 'pointer', textAlign: 'left' }}>
-                    {sel ? '☑' : '☐'} Ch.{i + 1} — {ch.name}
+                    {sel
+                      ? <CheckSquare size={13} strokeWidth={2.2} style={{ verticalAlign: '-2px' }} />
+                      : <Square size={13} strokeWidth={2.2} style={{ verticalAlign: '-2px' }} />} Ch.{i + 1} — {ch.name}
                   </button>
                 );
               })}
@@ -280,10 +291,10 @@ function ContextMenu({ x, y, block, subject, onToggle, onEdit, onDelete, onMove,
   const done = block.status === 'done';
 
   const items = [
-    { icon: done ? '↺' : '✓', label: done ? t('planning.markTodo') : t('planning.markDone'), action: () => { onToggle(block.id); onClose(); }, color: '#27AE60' },
-    { icon: '✏️', label: t('common.edit'), action: () => { onEdit(block); onClose(); }, color: '#4A90D9' },
-    { icon: '⬇️', label: t('planning.moveToFree'), action: () => { onMove(block.id); onClose(); }, color: 'rgba(255,255,255,.7)' },
-    { icon: '🗑', label: t('planning.delete'), action: () => { onDelete(block.id); onClose(); }, color: '#E74C3C' },
+    { Icon: done ? RotateCcw : Check, label: done ? t('planning.markTodo') : t('planning.markDone'), action: () => { onToggle(block.id); onClose(); }, color: '#27AE60' },
+    { Icon: Pencil, label: t('common.edit'), action: () => { onEdit(block); onClose(); }, color: '#4A90D9' },
+    { Icon: ArrowDown, label: t('planning.moveToFree'), action: () => { onMove(block.id); onClose(); }, color: 'var(--text-secondary)' },
+    { Icon: Trash2, label: t('planning.delete'), action: () => { onDelete(block.id); onClose(); }, color: 'var(--danger)' },
   ];
 
   return (
@@ -304,7 +315,7 @@ function ContextMenu({ x, y, block, subject, onToggle, onEdit, onDelete, onMove,
             borderRadius: 8, border: 'none', background: 'transparent', color: item.color, fontSize: '.8rem', cursor: 'pointer', textAlign: 'left' }}
           onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.06)'}
           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-          <span style={{ width: 16 }}>{item.icon}</span>
+          <item.Icon size={14} strokeWidth={2.2} style={{ flexShrink: 0 }} />
           {item.label}
         </button>
       ))}
@@ -313,10 +324,15 @@ function ContextMenu({ x, y, block, subject, onToggle, onEdit, onDelete, onMove,
 }
 
 // ── Course block ──
+/** Double-tap tolerance: how long between the two taps, and how far apart. */
+const DOUBLE_TAP_MS = 450;
+const DOUBLE_TAP_PX = 32;
+
 function CourseBlock({ block, subject, onDelete, onToggle, onEdit, onMoveToFree, onResizeStart, isDragging, onDragStart, gridStartH = 0 }) {
   const { lang } = useTranslation();
-  const tapRef  = useRef(null);
+  const tapRef  = useRef(null); // { t, x, y } of the previous tap
   const longRef = useRef(null);
+  const touchToggleRef = useRef(0); // when touch last toggled, to ignore the synthetic dblclick
   const dragStartRef = useRef(null);
   const [ctxMenu, setCtxMenu] = useState(null);
 
@@ -331,23 +347,44 @@ function CourseBlock({ block, subject, onDelete, onToggle, onEdit, onMoveToFree,
 
   function handleDoubleClick(e) {
     e.preventDefault(); e.stopPropagation();
+    // A touch double-tap makes the browser synthesise a dblclick a moment
+    // later. Without this guard it toggled a second time and undid the first,
+    // which is why validating a block on mobile looked unreliable.
+    if (Date.now() - touchToggleRef.current < 900) return;
     onToggle(block.id);
   }
 
   // Touch: double-tap = toggle, long press = context menu.
+  //
+  // The window is measured between the two touchstarts and used to be 300 ms,
+  // which is shorter than a comfortable double tap — hence the misses. It is
+  // now 450 ms, and the two taps must land close together so that a drag or
+  // two deliberate taps on different blocks never count as one gesture.
   function handleTouchStart(e) {
     const now = Date.now();
+    const touch = e.touches[0];
+    const here = { x: touch.clientX, y: touch.clientY };
+
     longRef.current = setTimeout(() => {
-      const t = e.touches[0];
-      setCtxMenu({ x: t.clientX, y: t.clientY });
+      setCtxMenu({ x: here.x, y: here.y });
       longRef.current = null;
     }, 500);
-    if (tapRef.current && now - tapRef.current < 300) {
+
+    const prev = tapRef.current;
+    const quick = prev && now - prev.t < DOUBLE_TAP_MS;
+    const close = prev && Math.hypot(here.x - prev.x, here.y - prev.y) < DOUBLE_TAP_PX;
+
+    if (quick && close) {
       clearTimeout(longRef.current);
-      onToggle(block.id);
+      longRef.current = null;
       tapRef.current = null;
+      touchToggleRef.current = now;
+      // Confirm the toggle physically: on a small block the visual change is
+      // easy to miss, and a silent miss is what makes a gesture feel broken.
+      navigator.vibrate?.(15);
+      onToggle(block.id);
     } else {
-      tapRef.current = now;
+      tapRef.current = { t: now, ...here };
     }
   }
   function handleTouchEnd() { if (longRef.current) { clearTimeout(longRef.current); longRef.current = null; } }
@@ -452,20 +489,24 @@ function TemplatesModal({ blocks, wkOff, onApply, onClose, user }) {
           padding: '1.5rem', width: 460, maxWidth: '100%', maxHeight: '80vh', overflowY: 'auto',
           display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h3 style={{ color: 'var(--text-primary)', fontWeight: 800, margin: 0 }}>📋 {t('planning.templatesTitle')}</h3>
+          <h3 style={{ color: 'var(--text-primary)', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: 7 }}>
+            <ClipboardList size={16} strokeWidth={2.2} /> {t('planning.templatesTitle')}
+          </h3>
           <button aria-label="Fermer" onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.3rem', cursor: 'pointer' }}>×</button>
         </div>
 
         {/* Save current week */}
-        <div style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 12, padding: '1rem', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ fontSize: '.82rem', fontWeight: 700, color: '#fff' }}>💾 {t('planning.saveCurrentWeek')}</div>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: '1rem', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: '.82rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Save size={13} strokeWidth={2.2} /> {t('planning.saveCurrentWeek')}
+          </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <input value={tplName} onChange={e => setTplName(e.target.value)}
               placeholder={t('planning.templateName')}
-              style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,.12)',
-                background: 'rgba(255,255,255,.07)', color: '#fff', fontSize: '.82rem', outline: 'none' }} />
+              style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border-strong)',
+                background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: '.82rem', outline: 'none' }} />
             <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: .97 }} onClick={saveTemplate} disabled={!tplName.trim() || saving}
-              style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#4A90D9', color: '#fff', fontSize: '.78rem', fontWeight: 700, cursor: 'pointer' }}>
+              style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: '.78rem', fontWeight: 700, cursor: 'pointer' }}>
               {saving ? '…' : t('planning.saveBtn')}
             </motion.button>
           </div>
@@ -474,7 +515,7 @@ function TemplatesModal({ blocks, wkOff, onApply, onClose, user }) {
         {/* Templates list */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {templates.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '1.5rem', color: 'rgba(255,255,255,.25)', fontSize: '.82rem' }}>
+            <div style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)', fontSize: '.82rem' }}>
               {t('planning.noTemplates')}
             </div>
           ) : templates.map(tp => (
@@ -488,12 +529,13 @@ function TemplatesModal({ blocks, wkOff, onApply, onClose, user }) {
               </div>
               <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: .97 }}
                 onClick={() => { onApply(tp.blocks); onClose(); }}
-                style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: 'rgba(74,144,217,.2)', color: '#93c5fd', fontSize: '.75rem', fontWeight: 700, cursor: 'pointer' }}>
+                style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: '.75rem', fontWeight: 700, cursor: 'pointer' }}>
                 {t('planning.apply')}
               </motion.button>
               <button onClick={() => deleteTemplate(tp.id)}
-                style={{ width: 26, height: 26, borderRadius: 7, border: '1px solid rgba(231,76,60,.2)', background: 'rgba(231,76,60,.06)', color: '#E74C3C', fontSize: '.7rem', cursor: 'pointer' }}>
-                🗑
+                aria-label={t('planning.delete')}
+                style={{ width: 26, height: 26, borderRadius: 7, border: '1px solid var(--danger)', background: 'transparent', color: 'var(--danger)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Trash2 size={13} strokeWidth={2.2} />
               </button>
             </div>
           ))}
@@ -822,7 +864,7 @@ export default function PagePlanning({ user }) {
               border: `1px solid ${wkOff === 0 ? 'rgba(74,144,217,.5)' : 'rgba(74,144,217,.2)'}`,
               background: wkOff === 0 ? 'rgba(74,144,217,.15)' : 'rgba(74,144,217,.06)',
               color: wkOff === 0 ? '#93c5fd' : 'rgba(74,144,217,.6)', fontSize: '.72rem', cursor: 'pointer', fontWeight: 600 }}>
-            📍
+            <MapPin size={14} strokeWidth={2.4} />
           </motion.button>
         </div>
 
@@ -830,21 +872,21 @@ export default function PagePlanning({ user }) {
         <div data-tour="tour-planning-tools" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           <motion.button aria-label={t('a11y.undo')} whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={undo}
             disabled={!undoStack.current.length} title={t('planning.undoTitle')}
-            style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.85rem', opacity: undoStack.current.length ? 1 : .4 }}>↩</motion.button>
+            style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.85rem', opacity: undoStack.current.length ? 1 : .4 }}><Undo2 size={15} strokeWidth={2} /></motion.button>
           <motion.button aria-label={t('a11y.redo')} whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={redo}
             disabled={!redoStack.current.length} title={t('planning.redoTitle')}
-            style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.85rem', opacity: redoStack.current.length ? 1 : .4 }}>↪</motion.button>
+            style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.85rem', opacity: redoStack.current.length ? 1 : .4 }}><Redo2 size={15} strokeWidth={2} /></motion.button>
           <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={() => setShowTemplates(true)}
             title={t('planning.templatesTitleShort')}
-            style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.82rem' }}>📋</motion.button>
+            style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.82rem' }}><ClipboardList size={15} strokeWidth={2} /></motion.button>
           <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={printPlanning}
             title={t('planning.printTitle')}
-            style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.82rem' }}>🖨️</motion.button>
+            style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.82rem' }}><Printer size={15} strokeWidth={2} /></motion.button>
           <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={() => setShowSettings(s => !s)}
             title={t('planning.settingsTitle')}
             style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)',
               background: showSettings ? 'var(--accent-subtle)' : 'var(--bg-card)',
-              color: showSettings ? 'var(--accent)' : 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.82rem' }}>⚙️</motion.button>
+              color: showSettings ? 'var(--accent)' : 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.82rem' }}><Settings size={15} strokeWidth={2} /></motion.button>
           <TourButton onClick={tour.start} label={t('common.guidedTour')} align='center' />
         </div>
       </div>
@@ -939,7 +981,9 @@ export default function PagePlanning({ user }) {
                   style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
                     borderRadius: 20, background: 'rgba(155,89,182,.1)', border: '1px dashed rgba(155,89,182,.4)',
                     cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>
-                  <span style={{ fontSize: '.72rem', color: 'rgba(155,89,182,.8)' }}>🎯 {t('planning.typeCustom')}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '.72rem', color: 'rgba(155,89,182,.9)' }}>
+                    <Target size={12} strokeWidth={2.2} /> {t('planning.typeCustom')}
+                  </span>
                 </button>
               </div>
 
@@ -1030,7 +1074,9 @@ export default function PagePlanning({ user }) {
                 style={{ display: 'flex', alignItems: 'center', gap: 7,
                   padding: sidebarInline ? '8px 10px' : '6px 10px', borderRadius: 9, background: 'rgba(155,89,182,.2)',
                   border: '1px dashed rgba(155,89,182,.55)', cursor: 'grab', flexShrink: 0, touchAction: 'none' }}>
-                <span style={{ fontSize: '.76rem', fontWeight: 600, color: 'var(--text-secondary)' }}>🎯 {t('planning.customBlock')}</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '.76rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  <Target size={13} strokeWidth={2.2} /> {t('planning.customBlock')}
+                </span>
               </div>
 
               {/* Shortcut legend — desktop only */}
@@ -1077,7 +1123,7 @@ export default function PagePlanning({ user }) {
                       </div>
                       {examSubj && (
                         <div style={{ fontSize: '.5rem', color: '#F1C40F', fontWeight: 700, background: 'rgba(241,196,15,.2)', borderRadius: 4, padding: '1px 4px', marginTop: 1 }}>
-                          🎓 {examSubj.name.slice(0, 8)}
+                          <GraduationCap size={9} strokeWidth={2.6} style={{ verticalAlign: '-1px' }} /> {examSubj.name.slice(0, 8)}
                         </div>
                       )}
                     </div>
