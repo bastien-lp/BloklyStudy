@@ -95,21 +95,36 @@ function SwipeCard({ card, onSwipe, isTop }) {
   );
 }
 
-export default function FlashcardStack({ cards, onDone }) {
+/**
+ * @param {object[]} cards           the cards still to answer
+ * @param {object[]} initialResults  answers from a resumed session
+ * @param {Function} onProgress      (results, remainingCards) after each card,
+ *                                   so the caller can save the position
+ */
+export default function FlashcardStack({ cards, onDone, initialResults = [], onProgress }) {
   const { t } = useTranslation();
-  const [stack, setStack]     = useState([...cards].reverse());
-  const [results, setResults] = useState([]);
+  // The deck is captured once: the parent may re-render (and reshuffle) without
+  // disturbing a quiz in progress.
+  const [stack, setStack]     = useState(() => [...cards].reverse());
+  const [results, setResults] = useState(initialResults);
   const [last, setLast]       = useState(null);
 
   function handleSwipe(dir, card) {
     setLast(dir);
     setTimeout(() => setLast(null), 600);
-    setResults(r => [...r, { ...card, ok: dir === 'know' }]);
-    setStack(s => s.slice(0, -1));
+    // Computed here rather than read back from state, which updates later.
+    const nextResults = [...results, { ...card, ok: dir === 'know' }];
+    const nextStack   = stack.slice(0, -1);
+    setResults(nextResults);
+    setStack(nextStack);
+    // `stack` is stored reversed (top card last), so undo that for the caller.
+    onProgress?.(nextResults, [...nextStack].reverse());
   }
 
-  const done  = cards.length - stack.length;
-  const total = cards.length;
+  // A resumed quiz counts the cards already answered, so the bar and the final
+  // score cover the whole set and not just what was left.
+  const total = initialResults.length + cards.length;
+  const done  = total - stack.length;
   const pct   = total > 0 ? done / total : 0;
 
   if (stack.length === 0) {
@@ -183,22 +198,6 @@ export default function FlashcardStack({ cards, onDone }) {
             </motion.div>
           );
         })}
-      </div>
-
-      {/* Instructions */}
-      <div style={{ padding:'1rem', display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0,
-        background:'var(--bg-card)', borderRadius:14, margin:'0 0 4px' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px',
-          background:'rgba(231,76,60,.1)', border:'1px solid rgba(231,76,60,.25)', borderRadius:20 }}>
-          <span style={{ fontSize:'1rem' }}>👈</span>
-          <span style={{ fontSize:'.72rem', color:'#E74C3C', fontWeight:700 }}>{t('flashcards.dontKnow')}</span>
-        </div>
-        <span style={{ fontSize:'.6rem', color:'var(--text-muted)', textAlign:'center', maxWidth:80, lineHeight:1.3 }}>{t('flashcards.tapFlip')}</span>
-        <div style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px',
-          background:'rgba(39,174,96,.1)', border:'1px solid rgba(39,174,96,.25)', borderRadius:20 }}>
-          <span style={{ fontSize:'.72rem', color:'#27AE60', fontWeight:700 }}>{t('flashcards.know')}</span>
-          <span style={{ fontSize:'1rem' }}>👉</span>
-        </div>
       </div>
 
     </div>

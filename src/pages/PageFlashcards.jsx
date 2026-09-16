@@ -19,7 +19,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { doc, onSnapshot, updateDoc, collection, addDoc, getDocs, query, orderBy, limit, increment, arrayUnion, arrayRemove, deleteDoc } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, setDoc, deleteField, collection, addDoc, getDocs, query, orderBy, limit, increment, arrayUnion, arrayRemove, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import FlashcardStack from '../components/FlashcardStack';
 import FlashcardMasonry from '../components/FlashcardMasonry';
@@ -441,6 +441,10 @@ export default function PageFlashcards({ user }) {
   const [editCard, setEditCard]           = useState(null);
   const [showShare, setShowShare]         = useState(false);
   const [importDeck, setImportDeck]       = useState(null); // hub deck awaiting a destination pick
+  // Unfinished quizzes, keyed by subject_chapter_subset (see quizKeyFor).
+  const [quizSessions, setQuizSessions]   = useState({});
+  const [resumePrompt, setResumePrompt]   = useState(null); // { subset, saved } awaiting resume/restart
+  const [quizRun, setQuizRun]             = useState(null); // { key, cards, results } of the running quiz
 
   useEffect(() => {
     if (!user) return;
@@ -458,6 +462,14 @@ export default function PageFlashcards({ user }) {
     });
     return unsub;
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = onSnapshot(doc(db, 'users', user.uid, 'data', 'quizSessions'), snap => {
+      setQuizSessions(snap.exists() ? (snap.data().sessions || {}) : {});
+    }, () => setQuizSessions({}));
+    return unsub;
+  }, [user]);
 
   async function save(updated) {
     try { await updateDoc(doc(db, 'users', user.uid, 'data', 'main'), { flashcards: updated }); }
@@ -487,6 +499,8 @@ export default function PageFlashcards({ user }) {
   }
 
   function handleQuizDone(results) {
+    if (quizRun) clearQuizSession(quizRun.key);
+    setQuizRun(null);
     const k = `${selSubj}_${selChap}`;
     const cards = [...(flashcards[k] || [])];
     results.forEach(r => { const orig = cards.find(c => c.q === r.q); if (orig) orig.ok = r.ok; });
@@ -534,10 +548,63 @@ export default function PageFlashcards({ user }) {
   const cardsOf = (ci) => flashcards[`${selSubj}_${ci}`] || [];
   const openCards = cardsOf(selChap);
   const missedCards = openCards.filter(c => c.ok === false);
-  const quizDeck = quizSubset === 'missed' && missedCards.length ? missedCards : openCards;
 
   function openDeck(ci) { setSelChap(ci); setView('deck'); }
-  function startQuiz(subset) { setQuizSubset(subset); setView('quiz'); }
+
+  /** A quiz is identified by its chapter AND its subset: the decks differ. */
+  function quizKeyFor(subset) { return `${selSubj}_${selChap}_${subset}`; }
+
+  function deckFor(subset) {
+    return subset === 'missed' && missedCards.length ? missedCards : openCards;
+  }
+
+  /** Offer to resume when an unfinished run exists for this exact set. */
+  function startQuiz(subset) {
+    const saved = quizSessions[quizKeyFor(subset)];
+    if (saved?.remaining?.length) setResumePrompt({ subset, saved });
+    else beginQuiz(subset, null);
+  }
+
+  /** Start the quiz, either from scratch or from a saved position. */
+  function beginQuiz(subset, saved) {
+    setResumePrompt(null);
+    setQuizSubset(subset);
+    setQuizRun({
+      key: quizKeyFor(subset),
+      // Shuffled once, here, so a re-render cannot reorder a running quiz.
+      cards: saved ? saved.remaining : [...deckFor(subset)].sort(() => Math.random() - .5),
+      results: saved?.results || [],
+    });
+    setView('quiz');
+  }
+
+  /**
+   * Save the position after every card, so closing the app mid-quiz loses
+   * nothing. An empty remainder means the last card was just answered: drop
+   * the save rather than leave a finished session lying around.
+   */
+  function saveQuizProgress(results, remaining) {
+    if (!quizRun) return;
+    if (!remaining.length) { clearQuizSession(quizRun.key); return; }
+    setDoc(doc(db, 'users', user.uid, 'data', 'quizSessions'), {
+      sessions: {
+        [quizRun.key]: {
+          subset: quizSubset,
+          results,
+          remaining,
+          total: results.length + remaining.length,
+          updatedAt: new Date().toISOString(),
+        },
+      },
+    }, { merge: true })
+      .catch(e => reportSaveError(e, 'Flashcards — save quiz progress'));
+  }
+
+  /** Forget a saved run (finished, or restarted from scratch). */
+  function clearQuizSession(key) {
+    return updateDoc(doc(db, 'users', user.uid, 'data', 'quizSessions'),
+      { [`sessions.${key}`]: deleteField() }).catch(() => {});
+  }
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
@@ -718,7 +785,13 @@ export default function PageFlashcards({ user }) {
           {view === 'quiz' && (
             <motion.div key="quiz" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               style={{ height: 'calc(100vh - 200px)', minHeight: 400, position: 'relative' }}>
-              <FlashcardStack cards={[...quizDeck].sort(() => Math.random() - .5)} onDone={handleQuizDone} />
+              {quizRun && (
+                <FlashcardStack
+                  cards={quizRun.cards}
+                  initialResults={quizRun.results}
+                  onProgress={saveQuizProgress}
+                  onDone={handleQuizDone} />
+              )}
             </motion.div>
           )}
 
@@ -727,6 +800,43 @@ export default function PageFlashcards({ user }) {
 
       {/* Modals */}
       <AnimatePresence>
+        {resumePrompt && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={e => e.target === e.currentTarget && setResumePrompt(null)}
+            style={{ position: 'fixed', inset: 0, zIndex: 1100, padding: '1rem',
+              background: 'rgba(0,0,0,.7)', backdropFilter: 'blur(12px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <motion.div initial={{ scale: .93, y: 16 }} animate={{ scale: 1, y: 0 }}
+              style={{ width: 340, maxWidth: '100%', borderRadius: 18, padding: '1.5rem',
+                background: 'var(--bg-modal)', border: '1px solid var(--border-strong)',
+                display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                {t('flashcards.resumeTitle')}
+              </h3>
+              <p style={{ margin: 0, fontSize: '.84rem', lineHeight: 1.5, color: 'var(--text-secondary)' }}>
+                {t('flashcards.resumeBody', {
+                  done: (resumePrompt.saved.results || []).length,
+                  total: resumePrompt.saved.total
+                    || ((resumePrompt.saved.results || []).length + resumePrompt.saved.remaining.length),
+                })}
+              </p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => beginQuiz(resumePrompt.subset, null)}
+                  style={{ flex: 1, padding: '10px', borderRadius: 11, cursor: 'pointer',
+                    border: '1px solid var(--border-strong)', background: 'var(--bg-card)',
+                    color: 'var(--text-secondary)', fontSize: '.82rem', fontWeight: 700 }}>
+                  {t('flashcards.restartBtn')}
+                </button>
+                <button onClick={() => beginQuiz(resumePrompt.subset, resumePrompt.saved)}
+                  style={{ flex: 1, padding: '10px', borderRadius: 11, cursor: 'pointer',
+                    border: 'none', background: 'var(--accent)', color: '#fff',
+                    fontSize: '.82rem', fontWeight: 700 }}>
+                  {t('flashcards.resumeBtn')}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
         {showCardModal && (
           <CardModal card={editCard} subjects={subjects} currentSubjId={parseInt(selSubj, 10)} currentChapIdx={selChap}
             onSave={handleSaveCard} onClose={() => { setShowCardModal(false); setEditCard(null); }} />
