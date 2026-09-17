@@ -301,6 +301,10 @@ export default function PageReserve({ user }) {
     studyTime: {}, harvested: {}, coins: 0,
     potLevels: {}, potProgress: {}, diversity: { week: '', subjects: [] },
     purchasedCounts: {}, placedItems: [],
+    // These two were missing: they only appeared once data/reserve existed, so
+    // an account that had never written it read `rooms[id]` off undefined and
+    // the House tab crashed into the error boundary.
+    rooms: {}, unlockedRooms: ['piece'],
   });
   const [tab, setTab] = useState('garden');
   const [activeRoomId, setActiveRoomId] = useState(null); // null = vue plan
@@ -464,7 +468,7 @@ export default function PageReserve({ user }) {
   // Retourne les objets placés dans la pièce active
   function getPlacedItems() {
     if (!activeRoomId) return [];
-    return reserve.rooms[activeRoomId]?.placedItems || [];
+    return (reserve.rooms || {})[activeRoomId]?.placedItems || [];
   }
 
   function persistPlaced(list) {
@@ -894,7 +898,7 @@ export default function PageReserve({ user }) {
                   const canUnlock = userXp >= room.unlockXp && reserve.coins >= room.unlockCoins && !isUnlocked;
                   const xpOk = userXp >= room.unlockXp;
                   const coinsOk = reserve.coins >= room.unlockCoins;
-                  const roomItems = reserve.rooms[room.id]?.placedItems || [];
+                  const roomItems = (reserve.rooms || {})[room.id]?.placedItems || [];
                   /** Une condition de déverrouillage, remplie ou non. */
                   const requirement = (ok, label) => (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 9px',
