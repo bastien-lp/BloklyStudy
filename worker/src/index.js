@@ -10,6 +10,8 @@
  *   /library…, /docs/:id/library  public synthesis library (see library.js)
  *   /library/:id/comments|rating, /library/follows  comments, ratings, followed schools (libraryCommunity.js)
  *   /docs/:id/annotations, /annotations…  private PDF highlights and notes (annotations.js)
+ *   /push/…, /notifications/…, /notify/group  push notifications (notifications.js);
+ *   the cron trigger (wrangler.toml [triggers]) sends scheduled reminders.
  *
  * ── GET /events ──
  *
@@ -44,6 +46,7 @@ import { docRoutes } from './docs.js';
 import { libraryRoutes } from './library.js';
 import { communityRoutes } from './libraryCommunity.js';
 import { annotationRoutes } from './annotations.js';
+import { notificationRoutes, runScheduled } from './notifications.js';
 
 // ── Limits ──
 const MAX_CALENDARS       = 10;
@@ -61,6 +64,11 @@ const GOOGLE_JWKS_URL =
   'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
 
 export default {
+  // Cron trigger: send the reminders that are due (see notifications.js).
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(runScheduled(env).catch(() => {}));
+  },
+
   async fetch(request, env) {
     const cors = corsHeaders(request, env);
 
@@ -103,6 +111,7 @@ const ROUTES = [
   ...libraryRoutes,
   ...communityRoutes,
   ...annotationRoutes,
+  ...notificationRoutes,
 ];
 
 function matchRoute(method, pathname) {

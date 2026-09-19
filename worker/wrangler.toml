@@ -27,6 +27,15 @@ DOCS_MAX_UPLOADS_PER_DAY = "40"
 # until an admin reviews it. ADMIN_UIDS may moderate (same list as src/lib/admin.js).
 LIBRARY_HIDE_AFTER_REPORTS = "3"
 ADMIN_UIDS = "VgHygV4pt5Qq7hL6yYQfXA0yql02"
+# Web Push (VAPID). The public key is also given to the app (.env.production).
+# The private key is a secret: `npx wrangler secret put VAPID_PRIVATE_KEY`
+# (local dev: worker/.dev.vars, git-ignored).
+VAPID_PUBLIC_KEY = "BPsnp-kb_4Wrzxdgsd4qf8sJwYuCLlXd0OThJN5XM0ZlIdhpgmaQSMGL0Ps_i3V20z3dTVxVG0llkAnEtrWUpn0"
+VAPID_SUBJECT = "https://bastien-lp.github.io/BloklyStudy/"
+
+# Cron trigger: sends the reminders that are due, every 15 minutes (free plan).
+[triggers]
+crons = ["*/15 * * * *"]
 
 # Workers AI (free: 10,000 neurons/day, account-wide). Always runs on
 # Cloudflare, even under `wrangler dev`, so it needs `npx wrangler login`.
