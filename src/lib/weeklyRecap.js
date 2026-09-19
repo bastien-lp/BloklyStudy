@@ -75,13 +75,17 @@ export function weeklyRecap(main = {}, weekStart = startOfWeek(), now = new Date
     .slice(0, 3);
 
   // ── Planning blocks of that week ──
+  // The planner writes `dateStr` as toISOString() of the LOCAL midnight of the
+  // block's day (east of UTC that is the previous calendar date). Match it
+  // with the very same computation instead of parsing it as a real date.
+  const weekDateStrs = new Set(Array.from({ length: 7 }, (_, i) =>
+    new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + i).toISOString().slice(0, 10)));
   let blocksPlanned = 0;
   let blocksDone = 0;
   let hoursPlanned = 0;
   let hoursDone = 0;
   for (const b of asArray(main.blocks)) {
-    const day = parseDay(b?.dateStr);
-    if (!day || day.getTime() < start || day.getTime() >= end) continue;
+    if (!b?.dateStr || !weekDateStrs.has(b.dateStr)) continue;
     const dur = Number(b.dur) || 0;
     blocksPlanned++;
     hoursPlanned += dur;
