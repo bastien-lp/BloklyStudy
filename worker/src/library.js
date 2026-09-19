@@ -5,7 +5,7 @@
  *   PUT    /docs/:id/library        publish, or update the description (owner)
  *   DELETE /docs/:id/library        unpublish (owner)
  *   GET    /library                 search: ?q= &school= &subject= &level= &language=
- *                                    &sort=recent|popular &saved=1 &offset=
+ *                                    &sort=recent|popular|top &saved=1 &followed=1 &offset=
  *   GET    /library/facets          top schools / subjects (with counts) for the filters
  *   POST   /library/:id/like        { liked: boolean }
  *   POST   /library/:id/save        { saved: boolean }   (personal favourites)
@@ -151,7 +151,7 @@ async function search({ request, env, uid }) {
   const moderation = p.get('moderation') === '1' && isAdmin(env, uid);
 
   const where = [moderation ? 'l.hidden = 1' : 'l.hidden = 0'];
-  const binds = [uid, uid];
+  const binds = [uid, uid, uid];
   let join = '';
 
   if (p.get('saved') === '1') {
@@ -170,16 +170,27 @@ async function search({ request, env, uid }) {
   if (LEVELS.has(p.get('level'))) { where.push('l.level = ?'); binds.push(p.get('level')); }
   if (LANGUAGES.has(p.get('language'))) { where.push('l.language = ?'); binds.push(p.get('language')); }
 
+  if (p.get('followed') === '1') {
+    where.push('l.school_key IN (SELECT school_key FROM school_follows WHERE uid = ?)');
+    binds.push(uid);
+  }
+
+  // 'top': Bayesian average (3 virtual 3-star votes), so a single 5-star rating
+  // does not outrank twenty 4.5-star ones.
   const order = p.get('sort') === 'popular'
     ? 'l.likes DESC, l.views DESC, l.published_at DESC'
-    : 'l.published_at DESC';
+    : p.get('sort') === 'top'
+      ? '(l.rating_sum + 9.0) / (l.rating_count + 3) DESC, l.rating_count DESC, l.published_at DESC'
+      : 'l.published_at DESC';
   const offset = Math.min(MAX_OFFSET, Math.max(0, Math.floor(Number(p.get('offset')) || 0)));
 
-  // `binds` was built in placement order: the two EXISTS (uid, uid), the join, then WHERE.
+  // `binds` was built in placement order: the three per-user subqueries (liked, saved,
+  // my_rating), the join, then the WHERE conditions.
   const { results } = await env.DB.prepare(
     `SELECT d.*, ${LIBRARY_COLUMNS}, l.reports AS reports,
             EXISTS (SELECT 1 FROM library_likes k WHERE k.doc_id = l.doc_id AND k.uid = ?) AS liked,
-            EXISTS (SELECT 1 FROM library_saves v WHERE v.doc_id = l.doc_id AND v.uid = ?) AS saved
+            EXISTS (SELECT 1 FROM library_saves v WHERE v.doc_id = l.doc_id AND v.uid = ?) AS saved,
+            (SELECT stars FROM library_ratings r WHERE r.doc_id = l.doc_id AND r.uid = ?) AS my_rating
        FROM library_entries l JOIN documents d ON d.id = l.doc_id ${join}
       WHERE ${where.join(' AND ')}
       ORDER BY ${order}
@@ -187,7 +198,7 @@ async function search({ request, env, uid }) {
   ).bind(...binds).all();
 
   const docs = results.slice(0, PAGE_SIZE).map(r => ({
-    ...toClient(r, uid), liked: Boolean(r.liked), saved: Boolean(r.saved),
+    ...toClient(r, uid), liked: Boolean(r.liked), saved: Boolean(r.saved), myRating: r.my_rating || 0,
     ...(moderation ? { reports: r.reports } : {}),
   }));
   return ok({ docs, hasMore: results.length > PAGE_SIZE, nextOffset: offset + docs.length });

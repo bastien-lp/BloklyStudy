@@ -8,6 +8,7 @@
  *   POST /ai/flashcards  course text → flashcards, via Workers AI (see ai.js)
  *   /docs…, /groups/:id/docs  shared synthesis documents, R2 + D1 (see docs.js)
  *   /library…, /docs/:id/library  public synthesis library (see library.js)
+ *   /library/:id/comments|rating, /library/follows  comments, ratings, followed schools (libraryCommunity.js)
  *
  * ── GET /events ──
  *
@@ -40,6 +41,7 @@ import ICAL from 'ical.js';
 import { generateFlashcards } from './ai.js';
 import { docRoutes } from './docs.js';
 import { libraryRoutes } from './library.js';
+import { communityRoutes } from './libraryCommunity.js';
 
 // ── Limits ──
 const MAX_CALENDARS       = 10;
@@ -97,6 +99,7 @@ const ROUTES = [
   ['POST', /^\/ai\/flashcards$/, generateFlashcards],
   ...docRoutes,
   ...libraryRoutes,
+  ...communityRoutes,
 ];
 
 function matchRoute(method, pathname) {

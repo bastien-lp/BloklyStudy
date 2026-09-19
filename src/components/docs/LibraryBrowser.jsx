@@ -6,6 +6,8 @@
  * and language, newest / most liked, and personal favourites. Opening a
  * document uses the regular viewer; from there one can like, save or report
  * it. Admins get a moderation list of hidden (reported) documents.
+ * Each document also has a star rating and comments (LibraryDiscussion), and
+ * students can follow schools to filter on "my schools".
  *
  * Data: worker `GET /library` (+ `/library/facets` for the filter chips).
  *
@@ -16,12 +18,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Search, School, Heart, Bookmark, BookmarkCheck, Eye, Flag, Library, X, TrendingUp, Clock, ShieldAlert, EyeOff, Trash2, Check,
+  Star, MessageSquare, Bell, BellRing,
 } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { isAdmin } from '../../lib/admin';
 import {
   searchLibrary, getLibraryFacets, likeLibraryDoc, saveLibraryDoc, reportLibraryDoc, moderateLibraryDoc,
+  listSchoolFollows, setSchoolFollow,
 } from '../../lib/docs';
+import LibraryDiscussion from './LibraryDiscussion';
 import { Button, EmptyState } from '../ui';
 import DocCover from './DocCover';
 import DocViewer from './DocViewer';
@@ -61,8 +66,8 @@ function IconToggle({ active, onClick, label, icon: Icon, activeIcon: ActiveIcon
 }
 
 /** One published document. */
-function LibraryCard({ user, doc, index, onOpen, onLike, onSave }) {
-  const { t } = useTranslation();
+function LibraryCard({ user, doc, index, onOpen, onLike, onSave, onTalk }) {
+  const { t, formatNumber } = useTranslation();
   const lib = doc.library;
   const tint = subjectTint(lib.subject);
   return (
@@ -102,6 +107,15 @@ function LibraryCard({ user, doc, index, onOpen, onLike, onSave }) {
           <span title={t('library.views')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '.68rem', color: 'var(--text-muted)', padding: '3px 4px' }}>
             <Eye size={14} aria-hidden="true" />{lib.views}
           </span>
+          <button type="button" onClick={() => onTalk(doc)}
+            aria-label={t('libraryTalk.openFor', { count: lib.comments || 0 })} title={t('libraryTalk.openFor', { count: lib.comments || 0 })}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '.68rem', color: 'var(--text-muted)', padding: '3px 4px',
+              border: 'none', background: 'transparent', cursor: 'pointer', fontWeight: 700 }}>
+            {lib.rating != null && (
+              <><Star size={13} fill="#E3B341" color="#E3B341" aria-hidden="true" />{formatNumber(lib.rating, { maximumFractionDigits: 1 })}</>
+            )}
+            <MessageSquare size={13} aria-hidden="true" style={{ marginLeft: lib.rating != null ? 4 : 0 }} />{lib.comments || 0}
+          </button>
           <span style={{ marginLeft: 'auto' }} />
           <IconToggle icon={Bookmark} activeIcon={BookmarkCheck} active={doc.saved}
             label={t(doc.saved ? 'library.unsave' : 'library.save')} onClick={() => onSave(doc)} />
@@ -176,6 +190,9 @@ export default function LibraryBrowser({ user, profile, onPublishOwn }) {
   const [facets, setFacets] = useState({ schools: [], subjects: [], total: 0 });
   const [viewer, setViewer] = useState(null);
   const [reporting, setReporting] = useState(null);
+  const [talk, setTalk] = useState(null);          // doc id whose rating & comments are open
+  const [follows, setFollows] = useState([]);      // schools I follow: [{ key, label, count }]
+  const [followedOnly, setFollowedOnly] = useState(false);
   const [notice, setNotice] = useState('');
   const requestSeq = useRef(0);
 
@@ -186,8 +203,23 @@ export default function LibraryBrowser({ user, profile, onPublishOwn }) {
   }, [query]);
 
   const params = useMemo(() => ({
-    q: debounced, school, subject, level, language, sort, saved: savedOnly, moderation,
-  }), [debounced, school, subject, level, language, sort, savedOnly, moderation]);
+    q: debounced, school, subject, level, language, sort, saved: savedOnly, moderation, followed: followedOnly,
+  }), [debounced, school, subject, level, language, sort, savedOnly, moderation, followedOnly]);
+
+  // Schools I follow (for the "my schools" filter and the follow buttons).
+  useEffect(() => {
+    let alive = true;
+    listSchoolFollows(user).then(data => { if (alive) setFollows(data.follows); }).catch(() => {});
+    return () => { alive = false; };
+  }, [user]);
+
+  async function toggleFollow(label, follow) {
+    try {
+      const data = await setSchoolFollow(user, label, follow);
+      setFollows(data.follows);
+      if (!data.follows.length) setFollowedOnly(false);
+    } catch (e) { setError(docErrorKey(e.code)); }
+  }
 
   // First page whenever the filters change. Late answers to old queries are ignored.
   useEffect(() => {
@@ -250,8 +282,12 @@ export default function LibraryBrowser({ user, profile, onPublishOwn }) {
 
   const mySchool = profile?.school?.trim();
   const mySchoolFacet = mySchool && facets.schools.find(s => s.key === normalize(mySchool));
-  const activeFilters = [school, subject, level, language].filter(Boolean).length + (savedOnly ? 1 : 0);
-  const clearAll = () => { setSchool(''); setSubject(''); setLevel(''); setLanguage(''); setSavedOnly(false); setQuery(''); };
+  const activeFilters = [school, subject, level, language].filter(Boolean).length + (savedOnly ? 1 : 0) + (followedOnly ? 1 : 0);
+  const clearAll = () => { setSchool(''); setSubject(''); setLevel(''); setLanguage(''); setSavedOnly(false); setFollowedOnly(false); setQuery(''); };
+  const followedKeys = new Set(follows.map(f => f.key));
+  const selectedSchool = school && (facets.schools.find(s => s.key === school) || follows.find(f => f.key === school));
+  const talkDoc = talk && results.docs.find(d => d.id === talk);
+  const myPseudo = profile?.pseudo || user?.displayName || user?.email?.split('@')[0] || '?';
 
   // Viewer docs need a display name; the library title is the one people chose.
   const viewerDocs = results.docs.map(d => ({ ...d, name: d.library.title, sharedBy: d.library.author }));
@@ -301,7 +337,8 @@ export default function LibraryBrowser({ user, profile, onPublishOwn }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <div role="group" aria-label={t('library.sortLabel')} style={{ display: 'inline-flex', padding: 3, borderRadius: 99, background: 'var(--bg-card)' }}>
-            {[{ v: 'recent', icon: Clock, l: t('library.sortRecent') }, { v: 'popular', icon: TrendingUp, l: t('library.sortPopular') }].map(o => (
+            {[{ v: 'recent', icon: Clock, l: t('library.sortRecent') }, { v: 'popular', icon: TrendingUp, l: t('library.sortPopular') },
+              { v: 'top', icon: Star, l: t('libraryTalk.sortTop') }].map(o => (
               <button key={o.v} type="button" onClick={() => setSort(o.v)} aria-pressed={sort === o.v}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 11px', borderRadius: 99, border: 'none', cursor: 'pointer',
                   fontSize: '.72rem', fontWeight: 700, background: sort === o.v ? 'var(--accent-subtle)' : 'transparent',
@@ -321,6 +358,11 @@ export default function LibraryBrowser({ user, profile, onPublishOwn }) {
           <Chip active={savedOnly} onClick={() => setSavedOnly(s => !s)}>
             <Bookmark size={13} aria-hidden="true" />{t('library.favourites')}
           </Chip>
+          {follows.length > 0 && (
+            <Chip active={followedOnly} onClick={() => setFollowedOnly(f => !f)} title={follows.map(f => f.label).join(', ')}>
+              <BellRing size={13} aria-hidden="true" />{t('libraryTalk.mySchools', { count: follows.length })}
+            </Chip>
+          )}
           {admin && (
             <Chip active={moderation} onClick={() => setModeration(m => !m)}>
               <ShieldAlert size={13} aria-hidden="true" />{t('library.moderation')}
@@ -345,9 +387,20 @@ export default function LibraryBrowser({ user, profile, onPublishOwn }) {
             )}
             {facets.schools.filter(s => s.key !== mySchoolFacet?.key).map(s => (
               <Chip key={s.key} active={school === s.key} onClick={() => setSchool(cur => (cur === s.key ? '' : s.key))}>
+                {followedKeys.has(s.key) && <BellRing size={11} aria-hidden="true" />}
                 {s.label} <span style={{ opacity: .7, fontSize: '.64rem' }}>{s.count}</span>
               </Chip>
             ))}
+          </div>
+        )}
+        {selectedSchool && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '.74rem', color: 'var(--text-secondary)' }}>
+            <School size={14} aria-hidden="true" />
+            <strong style={{ color: 'var(--text-primary)' }}>{selectedSchool.label}</strong>
+            <Button size="sm" variant={followedKeys.has(school) ? 'ghost' : 'primary'} icon={followedKeys.has(school) ? BellRing : Bell}
+              onClick={() => toggleFollow(selectedSchool.label, !followedKeys.has(school))}>
+              {followedKeys.has(school) ? t('libraryTalk.following') : t('libraryTalk.follow')}
+            </Button>
           </div>
         )}
 
@@ -385,7 +438,7 @@ export default function LibraryBrowser({ user, profile, onPublishOwn }) {
               {results.docs.map((d, i) => (
                 <LibraryCard key={d.id} user={user} doc={d} index={i}
                   onOpen={doc => setViewer(results.docs.findIndex(x => x.id === doc.id))}
-                  onLike={toggleLike} onSave={toggleSave} />
+                  onLike={toggleLike} onSave={toggleSave} onTalk={doc => setTalk(doc.id)} />
               ))}
             </AnimatePresence>
           </motion.div>
@@ -424,6 +477,8 @@ export default function LibraryBrowser({ user, profile, onPublishOwn }) {
                       label={doc.mine ? t('library.likesOwn') : t(doc.liked ? 'library.unlike' : 'library.like')} onClick={() => toggleLike(doc)} />
                     <IconToggle icon={Bookmark} activeIcon={BookmarkCheck} active={doc.saved}
                       label={t(doc.saved ? 'library.unsave' : 'library.save')} onClick={() => toggleSave(doc)} />
+                    <IconToggle icon={MessageSquare} active={false} count={doc.library.comments || 0}
+                      label={t('libraryTalk.openFor', { count: doc.library.comments || 0 })} onClick={() => setTalk(doc.id)} />
                     {!doc.mine && (
                       <IconToggle icon={Flag} active={false} label={t('library.report')} onClick={() => setReporting(doc)} />
                     )}
@@ -437,6 +492,12 @@ export default function LibraryBrowser({ user, profile, onPublishOwn }) {
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {talkDoc && (
+          <LibraryDiscussion user={user} doc={talkDoc} pseudo={myPseudo} onClose={() => setTalk(null)}
+            onChange={(libPatch, docPatch = {}) => patch(talkDoc.id, d => ({ ...d, ...docPatch, library: { ...d.library, ...libPatch } }))} />
+        )}
+      </AnimatePresence>
       <AnimatePresence>
         {reporting && (
           <ReportDialog user={user} doc={reporting} onClose={() => setReporting(null)}

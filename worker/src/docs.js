@@ -96,7 +96,8 @@ function randomId() {
  */
 export const LIBRARY_COLUMNS = `l.published_at AS lib_published_at, l.title AS lib_title, l.subject AS lib_subject,
   l.school AS lib_school, l.level AS lib_level, l.language AS lib_language, l.description AS lib_description,
-  l.author_pseudo AS lib_author, l.likes AS lib_likes, l.views AS lib_views, l.hidden AS lib_hidden`;
+  l.author_pseudo AS lib_author, l.likes AS lib_likes, l.views AS lib_views, l.hidden AS lib_hidden,
+  l.rating_sum AS lib_rating_sum, l.rating_count AS lib_rating_count, l.comment_count AS lib_comment_count`;
 
 /** The shape sent to the browser. Never includes the owner's uid. */
 export function toClient(row, uid) {
@@ -123,6 +124,9 @@ export function toClient(row, uid) {
           title: row.lib_title, subject: row.lib_subject, school: row.lib_school, level: row.lib_level,
           language: row.lib_language, description: row.lib_description, author: row.lib_author,
           publishedAt: row.lib_published_at, likes: row.lib_likes, views: row.lib_views, hidden: Boolean(row.lib_hidden),
+          ratingCount: row.lib_rating_count || 0,
+          rating: row.lib_rating_count ? Math.round((row.lib_rating_sum / row.lib_rating_count) * 10) / 10 : null,
+          comments: row.lib_comment_count || 0,
         },
       }
       : {}),
@@ -159,6 +163,9 @@ export function unpublishStatements(env, id) {
     env.DB.prepare('DELETE FROM library_likes WHERE doc_id = ?').bind(id),
     env.DB.prepare('DELETE FROM library_saves WHERE doc_id = ?').bind(id),
     env.DB.prepare('DELETE FROM library_reports WHERE doc_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM library_comment_reports WHERE comment_id IN (SELECT id FROM library_comments WHERE doc_id = ?)').bind(id),
+    env.DB.prepare('DELETE FROM library_comments WHERE doc_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM library_ratings WHERE doc_id = ?').bind(id),
     env.DB.prepare('DELETE FROM library_entries WHERE doc_id = ?').bind(id),
   ];
 }

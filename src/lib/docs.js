@@ -93,6 +93,17 @@ export const saveLibraryDoc = (user, id, saved) => api(user, 'POST', `/library/$
 export const reportLibraryDoc = (user, id, reason) => api(user, 'POST', `/library/${id}/report`, { reason });
 export const moderateLibraryDoc = (user, id, action) => api(user, 'POST', `/library/${id}/moderate`, { action });
 
+// ── Library community (see worker/src/libraryCommunity.js) ──
+export const listLibraryComments = (user, id) => api(user, 'GET', `/library/${id}/comments`);
+export const addLibraryComment = (user, id, body, pseudo) => api(user, 'POST', `/library/${id}/comments`, { body, pseudo });
+export const deleteLibraryComment = (user, id, cid) => api(user, 'DELETE', `/library/${id}/comments/${cid}`);
+export const reportLibraryComment = (user, id, cid) => api(user, 'POST', `/library/${id}/comments/${cid}/report`);
+/** `stars` 1–5, or 0 to remove my rating. Resolves to `{ myRating, rating, ratingCount }`. */
+export const rateLibraryDoc = (user, id, stars) => api(user, 'PUT', `/library/${id}/rating`, { stars });
+export const listSchoolFollows = user => api(user, 'GET', '/library/follows');
+/** Resolves to the updated `{ follows: [{ key, label, count }] }`. */
+export const setSchoolFollow = (user, school, follow) => api(user, 'PUT', '/library/follows', { school, follow });
+
 const isRasterImage = file => /^image\/(jpeg|png|webp)$/.test(file.type);
 const isPdf = file => file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
 

@@ -12,6 +12,9 @@ const KEYS = {
   consent_required: 'library.errConsent',
   subject_required: 'library.errSubject',
   own_document: 'library.errOwn',
+  own_comment: 'library.errOwn',
+  comment_too_short: 'libraryTalk.errShort',
+  too_many_follows: 'libraryTalk.errTooManyFollows',
 };
 
 export const docErrorKey = code => KEYS[code] || 'docs.errGeneric';
