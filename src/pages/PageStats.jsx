@@ -29,6 +29,7 @@ import { GuidedTour, useGuidedTour, TourButton } from '../components/GuidedTour'
 import { dayKey, weekKey } from '../lib/dayKeys';
 import { reportSaveError } from '../lib/notify';
 import { resolveOwnPhoto } from '../lib/profilePhoto';
+import WeeklyRecap from '../components/WeeklyRecap';
 
 
 
@@ -536,6 +537,9 @@ export default function PageStats({ user, onOpenConv }) {
       <TourButton onClick={tour.start} label={t('common.guidedTour')} />
 
       {/* ── XP & Level ── */}
+      {/* ── Weekly recap ── */}
+      <WeeklyRecap data={data} />
+
       <section data-tour="tour-stats-xp" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: '1.5rem' }}>
         <h2 style={{ fontSize: '.9rem', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 16px' }}>🎮 {t('stats.levelTitle')}</h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 14 }}>
