@@ -17,6 +17,7 @@ import { db } from '../../firebase/config';
 import { useTranslation } from '../../i18n';
 import { shareDocToGroup, unshareDocFromGroup } from '../../lib/docs';
 import { postDocMessage } from '../../lib/groupDocMessage';
+import { notifyGroup } from '../../lib/notifications';
 import { Button, EmptyState } from '../ui';
 import DocCover from './DocCover';
 import { docErrorKey } from './docErrors';
@@ -49,6 +50,7 @@ export default function ShareDocModal({ user, doc, pseudo, onClose, onChange }) 
       } else {
         await shareDocToGroup(user, doc.id, group.id, pseudo);
         await postDocMessage(group.id, user, pseudo, doc);
+        notifyGroup(user, { groupId: group.id, kind: 'doc', name: pseudo, detail: doc.name });
         onChange(group.id, true);
       }
     } catch (e) {

@@ -114,6 +114,38 @@ self.addEventListener('fetch', event => {
   }
 });
 
+// ── Push notifications (see worker/src/notifications.js) ──
+// Payload: { title, body, tab, tag } — already translated by the app / worker.
+
+self.addEventListener('push', event => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { data = { title: 'Blokly', body: event.data?.text() || '' }; }
+  event.waitUntil(self.registration.showNotification(data.title || 'Blokly', {
+    body: data.body || '',
+    icon: BASE + 'icons/icon-192.png',
+    badge: BASE + 'icons/icon-192.png',
+    tag: data.tag || undefined,
+    renotify: Boolean(data.tag),
+    data: { tab: data.tab || '' },
+  }));
+});
+
+// Tap: focus an open Blokly window on the right tab, or open one.
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const tab = event.notification.data?.tab || '';
+  const target = new URL(BASE + (tab ? `?tab=${encodeURIComponent(tab)}` : ''), self.location.origin).href;
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const open = windows.find(w => new URL(w.url).pathname.startsWith(BASE));
+    if (open) {
+      if (tab) open.postMessage({ type: 'blokly:open-tab', tab });
+      return open.focus();
+    }
+    return self.clients.openWindow(target);
+  })());
+});
+
 async function networkFirstShell(event) {
   const cache = await caches.open(SHELL_CACHE);
   try {

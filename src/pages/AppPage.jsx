@@ -35,6 +35,7 @@ import { startPresence, clearPresence } from '../lib/presence';
 import { isAdmin, ADMIN_UIDS } from '../lib/admin';
 import { auditBadges } from '../lib/badgeAudit';
 import InstallPrompt from '../components/InstallPrompt';
+import { pushSupport, loadNotificationPrefs, computeSchedule, syncSchedule } from '../lib/notifications';
 
 // Each tab is a separate chunk, loaded the first time it is opened. This keeps
 // the initial authenticated bundle small — a user who never opens Stats or the
@@ -115,6 +116,19 @@ const TABS = [
   { id: 'journal',    Icon: BookOpen,      labelKey: 'app.tabJournal',    color: '#E67E22' },
   { id: 'whoarewe',   Icon: HandMetal,     labelKey: 'app.tabWhoarewe',   color: '#4A90D9' },
 ];
+
+/** Tabs a link or a notification may open (`?tab=…`), so nothing else can be injected. */
+const OPENABLE_TABS = new Set([...TABS.map(tab => tab.id), 'study', 'profile']);
+
+/** Tab requested by the URL (e.g. a tapped notification), if valid. */
+function tabFromUrl() {
+  try {
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    return OPENABLE_TABS.has(tab) ? tab : null;
+  } catch {
+    return null;
+  }
+}
 
 const COLORS = ['#E74C3C', '#E67E22', '#F1C40F', '#27AE60', '#4A90D9', '#9B59B6', '#1ABC9C', '#E91E63', '#FF5722', '#607D8B'];
 
@@ -409,7 +423,17 @@ function PageFallback() {
 
 export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked, setDevUnlocked }) {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState('planning');
+  const [activeTab, setActiveTab] = useState(() => tabFromUrl() || 'planning');
+
+  // Notifications: open the requested tab (URL on a cold start, message when already open).
+  useEffect(() => {
+    if (tabFromUrl()) window.history.replaceState(null, '', window.location.pathname + window.location.hash);
+    const onMessage = e => {
+      if (e.data?.type === 'blokly:open-tab' && OPENABLE_TABS.has(e.data.tab)) setActiveTab(e.data.tab);
+    };
+    navigator.serviceWorker?.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
+  }, []);
   const [pendingConv, setPendingConv] = useState(null); // friend to open as DM from profile
   const [xp, setXp]               = useState(0);
   const [level, setLevel]         = useState(1);
@@ -425,6 +449,9 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
   const [myPhoto, setMyPhoto] = useState(user?.photoURL || null);
   // "Show me online" privacy switch (profile.privacy.online, default on).
   const [showOnline, setShowOnline] = useState(true);
+  // Latest main document + notification prefs, to keep the reminder schedule in step.
+  const [mainDoc, setMainDoc] = useState(null);
+  const [notifPrefs, setNotifPrefs] = useState(null);
   const [showAddSubject, setShowAddSubject] = useState(false);
   const [showThemeEditor, setShowThemeEditor] = useState(false);
   const [subjects, setSubjects] = useState([]);
@@ -457,6 +484,26 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
     });
     return unsub;
   }, [user]);
+
+  // Reminder schedule (lib/notifications.js): prefs loaded once, updated live by the
+  // settings card; the schedule is recomputed when data changes (debounced) and
+  // only sent to the worker when it actually differs.
+  useEffect(() => {
+    if (!user || pushSupport() === 'unavailable') return undefined;
+    let alive = true;
+    loadNotificationPrefs(user).then(({ prefs }) => { if (alive) setNotifPrefs(prefs); }).catch(() => {});
+    const onPrefs = e => setNotifPrefs(e.detail);
+    window.addEventListener('blokly:notif-prefs', onPrefs);
+    return () => { alive = false; window.removeEventListener('blokly:notif-prefs', onPrefs); };
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || !notifPrefs || !mainDoc) return undefined;
+    const id = setTimeout(() => {
+      syncSchedule(user, computeSchedule(mainDoc, notifPrefs, t)).catch(() => {});
+    }, 4000);
+    return () => clearTimeout(id);
+  }, [user, mainDoc, notifPrefs, t]);
 
   // Publish my own presence (see lib/presence.js) unless I opted out.
   useEffect(() => {
@@ -554,6 +601,7 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
         if (d.profile?.pseudo) setPseudo(d.profile.pseudo);
         setMyPhoto(resolveOwnPhoto(d, user));
         setShowOnline(d.profile?.privacy?.online !== false);
+        setMainDoc(d);
 
         // Badges added to the catalogue after a threshold was already passed
         // are never re-checked by the Cloud Function, so they stayed locked.

@@ -31,6 +31,7 @@ import UserProfileModal from '../components/UserProfileModal';
 import { useTranslation } from '../i18n';
 import { reportSaveError, reportError } from '../lib/notify';
 import { fileToAvatarDataURL, saveProfilePhoto, resolveOwnPhoto } from '../lib/profilePhoto';
+import NotificationSettings from '../components/NotificationSettings';
 
 // Study-year options. `value` is the stored (stable) string — kept in French so
 // existing saved profiles keep matching; the label is localized for display.
@@ -349,6 +350,7 @@ export default function PageProfile({ user, onOpenConv }) {
         {tab === 'profile' && (
           <motion.div key="profile" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
             style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <NotificationSettings user={user} />
 
             <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '1.2rem', display: 'flex', flexDirection: 'column', gap: 12 }}>
               <h3 style={{ fontSize: '.85rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>✏️ {t('profile.infoTitle')}</h3>

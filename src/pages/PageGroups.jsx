@@ -42,6 +42,7 @@ import DocViewer from '../components/docs/DocViewer';
 import QuizSetupModal from '../components/quiz/QuizSetupModal';
 import LiveQuiz from '../components/quiz/LiveQuiz';
 import { subscribeQuiz, isQuizStale } from '../lib/groupQuiz';
+import { notifyGroup } from '../lib/notifications';
 
 function generateCode() {
   return 'BLK-' + Math.random().toString(36).slice(2, 6).toUpperCase();
@@ -898,6 +899,8 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
         ...(replyMeta ? { replyTo: replyMeta } : {}),
         ...extra
       });
+      // Push to the members I @mentioned (only those who opted in are notified).
+      if (mentions.length) notifyGroup(user, { groupId: group.id, kind: 'mention', name: pseudo, detail: text.slice(0, 120), mentions });
       // Update the group's last-message preview (for the list).
       updateDoc(doc(db, 'groups', group.id), {
         lastMessage: { uid: user.uid, pseudo, text, type: extra.type || 'text', sentAt },
@@ -1067,6 +1070,7 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
   async function sendDocHere(d) {
     await shareDocToGroup(user, d.id, group.id, pseudo);
     await send({ type: 'doc', text: d.name, doc: docMessageSummary(d) });
+    notifyGroup(user, { groupId: group.id, kind: 'doc', name: pseudo, detail: d.name });
   }
 
   async function sendLink(title, url) {
@@ -1461,6 +1465,7 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
               setShowQuizSetup(false);
               setShowQuiz(true);
               send({ type: 'quiz', text: title });
+              notifyGroup(user, { groupId: group.id, kind: 'quiz', name: pseudo, detail: title });
             }} />
         )}
         {showQuiz && <LiveQuiz user={user} groupId={group.id} pseudo={pseudo} onClose={() => setShowQuiz(false)} />}
