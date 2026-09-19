@@ -18,6 +18,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   doc, getDocs, setDoc, deleteDoc, updateDoc,
@@ -29,6 +30,7 @@ import { ref as dbRef, onValue } from 'firebase/database';
 import UserProfileModal from '../components/UserProfileModal';
 import { useTranslation } from '../i18n';
 import { reportSaveError, reportError } from '../lib/notify';
+import { fileToAvatarDataURL, saveProfilePhoto, resolveOwnPhoto } from '../lib/profilePhoto';
 
 // Study-year options. `value` is the stored (stable) string — kept in French so
 // existing saved profiles keep matching; the label is localized for display.
@@ -44,17 +46,23 @@ const YEARS = [
 
 const DEFAULT_PRIVACY = { public: true, stats: true, badges: true, leaderboard: true, online: true };
 
-function Avatar({ name, size = 48, color = '#4A90D9', level, online = false }) {
+function Avatar({ name, size = 48, color = '#4A90D9', level, online = false, photoURL = null }) {
   const { t } = useTranslation();
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>
-      <div style={{ width: size, height: size, borderRadius: '50%',
-        background: `linear-gradient(135deg, ${color}, #9B59B6)`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: size * .38 + 'px', fontWeight: 700, color: '#fff',
-        boxShadow: `0 0 16px ${color}40` }}>
-        {(name || '?')[0].toUpperCase()}
-      </div>
+      {photoURL ? (
+        <img src={photoURL} alt={name || ''}
+          style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', display: 'block',
+            boxShadow: `0 0 16px ${color}40` }} />
+      ) : (
+        <div style={{ width: size, height: size, borderRadius: '50%',
+          background: `linear-gradient(135deg, ${color}, #9B59B6)`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: size * .38 + 'px', fontWeight: 700, color: '#fff',
+          boxShadow: `0 0 16px ${color}40` }}>
+          {(name || '?')[0].toUpperCase()}
+        </div>
+      )}
       {online && (
         <div style={{ position: 'absolute', bottom: 2, right: 2, width: size * .22, height: size * .22,
           borderRadius: '50%', background: '#27AE60', border: `${size * .05}px solid var(--bg-base)` }} />
@@ -105,22 +113,31 @@ export default function PageProfile({ user, onOpenConv }) {
 
   const userColor = `hsl(${(user?.uid?.charCodeAt(0) * 47 || 0) % 360},60%,50%)`;
 
+  // See src/lib/profilePhoto.js for why photos are resized and stored this way.
   async function handlePhotoUpload(e) {
     const file = e.target.files?.[0];
+    e.target.value = ''; // picking the same file again must re-trigger onChange
     if (!file) return;
-    if (file.size > 500 * 1024) { alert(t('profile.imageTooLarge')); return; }
     setUploading(true);
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      const base64 = ev.target.result;
-      try {
-        await updateProfile(auth.currentUser, { photoURL: base64 });
-        await updateDoc(doc(db, 'users', user.uid, 'data', 'main'), { photoURL: base64 });
-        setPhotoURL(base64);
-      } catch (e) { reportSaveError(e, 'Profile — photo upload'); }
-      setUploading(false);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const dataURL = await fileToAvatarDataURL(file);
+      await saveProfilePhoto(user.uid, dataURL);
+      setPhotoURL(dataURL);
+    } catch (err) {
+      if (err.code === 'too_large') alert(t('profile.imageTooLarge'));
+      else if (err.code === 'not_image' || err.code === 'unreadable') alert(t('profile.imageUnreadable'));
+      else reportSaveError(err, 'Profile — photo upload');
+    }
+    setUploading(false);
+  }
+
+  async function handlePhotoRemove() {
+    setUploading(true);
+    try {
+      await saveProfilePhoto(user.uid, null);
+      setPhotoURL(null);
+    } catch (err) { reportSaveError(err, 'Profile — photo removal'); }
+    setUploading(false);
   }
 
   useEffect(() => {
@@ -131,6 +148,7 @@ export default function PageProfile({ user, onOpenConv }) {
         setXp(d.xp || 0); setLevel(d.level || 1); setStreak(d.streak || 0);
         setHours(Math.round((d.totalFocusHours || 0) * 10) / 10);
         setBadges(d.earnedBadges || []);
+        setPhotoURL(resolveOwnPhoto(d, user));
         if (d.profile) {
           setSchool(d.profile.school || '');
           setStudies(d.profile.studies || '');
@@ -275,6 +293,14 @@ export default function PageProfile({ user, onOpenConv }) {
               fontSize: '.65rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {uploading ? '…' : '📷'}
           </motion.button>
+          {photoURL && !uploading && (
+            <button onClick={handlePhotoRemove} aria-label={t('profile.removePhoto')} title={t('profile.removePhoto')}
+              style={{ position: 'absolute', top: 0, right: 0, width: 18, height: 18, borderRadius: '50%', padding: 0,
+                border: '2px solid var(--bg-base)', background: 'var(--bg-modal)', color: 'var(--text-muted)',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <X size={10} strokeWidth={2.5} aria-hidden="true" />
+            </button>
+          )}
           <input ref={fileRef} type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: 'none' }} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -458,7 +484,7 @@ export default function PageProfile({ user, onOpenConv }) {
                     style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
                       background: 'var(--bg-card-hover)', border: `1px solid ${online ? 'rgba(39,174,96,.3)' : 'var(--border)'}`,
                       borderRadius: 10, transition: 'border-color .3s' }}>
-                    <Avatar name={f.pseudo} size={38} color={fColor} online={online} />
+                    <Avatar name={f.pseudo} size={38} color={fColor} online={online} photoURL={f.photoURL || null} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: '.84rem', fontWeight: 600, color: 'var(--text-primary)' }}>{f.pseudo}</div>
                       <div style={{ fontSize: '.62rem', color: online ? '#27AE60' : 'var(--text-muted)' }}>

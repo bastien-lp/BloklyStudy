@@ -17,7 +17,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { doc, onSnapshot, collection, getDocs, getCountFromServer, query, orderBy, limit } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, collection, getDocs, getCountFromServer, query, orderBy, limit, where } from 'firebase/firestore';
 import { db, rtdb } from '../firebase/config';
 import { ref as dbRef, onValue } from 'firebase/database';
 import UserProfileModal from '../components/UserProfileModal';
@@ -28,6 +28,7 @@ import { Zap, Crown, Medal } from 'lucide-react';
 import { GuidedTour, useGuidedTour, TourButton } from '../components/GuidedTour';
 import { dayKey, weekKey } from '../lib/dayKeys';
 import { reportSaveError } from '../lib/notify';
+import { resolveOwnPhoto } from '../lib/profilePhoto';
 
 
 
@@ -43,19 +44,69 @@ const PODIUM = [
 /** Deterministic avatar colour — same formula as before, so nobody's colour moves. */
 const avatarHue = uid => (uid?.charCodeAt(0) * 47 || 0) % 360;
 
-/** A player's round avatar, with an accent ring when it's the current user. */
-function PlayerAvatar({ uid, pseudo, size, isMe, ring }) {
+/**
+ * A player's round avatar, with an accent ring when it's the current user.
+ * `photoURL` is only known for the current user (read from their own main
+ * document); `leaderboard/{uid}` docs carry no photo, so others get initials.
+ */
+function PlayerAvatar({ uid, pseudo, size, isMe, ring, photoURL }) {
   const hue = avatarHue(uid);
+  const shadow = isMe
+    ? '0 0 0 2px var(--accent), 0 0 12px var(--accent-glow)'
+    : ring ? `0 0 0 2px ${ring}` : 'none';
+  if (photoURL) {
+    return (
+      <img src={photoURL} alt="" style={{ width: size, height: size, borderRadius: '50%', flexShrink: 0,
+        objectFit: 'cover', display: 'block', boxShadow: shadow }} />
+    );
+  }
   return (
     <div style={{ width: size, height: size, borderRadius: '50%', flexShrink: 0,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontSize: size * 0.42, fontWeight: 700, color: '#fff',
       background: `linear-gradient(150deg, hsl(${hue},62%,58%), hsl(${hue},58%,42%))`,
-      boxShadow: isMe
-        ? '0 0 0 2px var(--accent), 0 0 12px var(--accent-glow)'
-        : ring ? `0 0 0 2px ${ring}` : 'none' }}>
+      boxShadow: shadow }}>
       {(pseudo || '?')[0].toUpperCase()}
     </div>
+  );
+}
+
+/** The small "You" pill next to the current user's name. */
+function YouPill({ label }) {
+  return (
+    <span style={{ flexShrink: 0, padding: '1px 7px', borderRadius: 99, fontSize: '.58rem', fontWeight: 800,
+      letterSpacing: '.02em', background: 'var(--accent)', color: 'var(--on-accent, #fff)' }}>
+      {label}
+    </span>
+  );
+}
+
+/**
+ * The current user's row: the one line of the ranking that must be found at a
+ * glance. Used in place inside the list, and pinned below it when the user is
+ * outside the top 20.
+ */
+function MyRankRow({ rank, uid, pseudo, photoURL, xp, format, youLabel, caption }) {
+  return (
+    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .3, ease: 'easeOut' }}
+      style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, margin: '6px 0',
+        padding: '11px 14px 11px 12px', borderRadius: 14,
+        background: 'linear-gradient(90deg, var(--accent-subtle), var(--bg-card-hover) 90%)',
+        boxShadow: 'inset 0 0 0 1.5px var(--accent), 0 10px 24px -14px var(--accent-glow)' }}>
+      <span style={{ minWidth: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: '.74rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums', padding: '0 4px', boxSizing: 'border-box',
+        background: 'var(--accent)', color: 'var(--on-accent, #fff)' }}>{rank}</span>
+      <PlayerAvatar uid={uid} pseudo={pseudo} size={36} isMe photoURL={photoURL} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+          <span style={{ fontSize: '.86rem', fontWeight: 800, color: 'var(--text-primary)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pseudo}</span>
+          <YouPill label={youLabel} />
+        </div>
+        {caption && <div style={{ fontSize: '.64rem', color: 'var(--text-muted)' }}>{caption}</div>}
+      </div>
+      <XpValue value={xp} size=".82rem" format={format} />
+    </motion.div>
   );
 }
 
@@ -71,11 +122,12 @@ function XpValue({ value, size = '.75rem', format }) {
 }
 
 // ── Leaderboard ──────────────────────────────────────────────────────────────
-function Leaderboard({ user, onOpenConv }) {
+function Leaderboard({ user, myPhoto, myPseudo, onOpenConv }) {
   const { t, formatNumber } = useTranslation();
   const [tab, setTab]         = useState('alltime');
   const [allRows, setAllRows] = useState(null); // null = not loaded yet
   const [viewUid, setViewUid] = useState(null); // { uid, pseudo }
+  const [mine, setMine]       = useState(null); // my own leaderboard doc + all-time rank, for the pinned row
 
   // Field ranked per tab.
   const KEY_BY_TAB = { today: 'xpToday', week: 'xpThisWeek', alltime: 'xp' };
@@ -118,9 +170,32 @@ function Leaderboard({ user, onOpenConv }) {
     return all.slice(0, 20);
   }, [allRows, tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // My own standing, for when I'm outside the top 20. The all-time rank is one
+  // server-side count ("how many have more XP than me"); the windowed tabs
+  // hold stale values from past days, so there the pinned row just says 20+.
+  useEffect(() => {
+    if (!user?.uid) return undefined;
+    let alive = true;
+    getDoc(doc(db, 'leaderboard', user.uid))
+      .then(async snap => {
+        const d = snap.exists() ? snap.data() : {};
+        const above = await getCountFromServer(query(collection(db, 'leaderboard'), where('xp', '>', d.xp || 0)))
+          .then(c => c.data().count).catch(() => null);
+        if (alive) setMine({ ...d, rank: above === null ? null : above + 1 });
+      })
+      .catch(() => { if (alive) setMine({}); });
+    return () => { alive = false; };
+  }, [user?.uid]);
+
   const loading = allRows === null;
   const top3 = rows.slice(0, 3);
   const rest = rows.slice(3);
+  const meInList = rows.some(r => r.uid === user?.uid);
+  const myWindowXp = !mine ? 0
+    : tab === 'today' ? (mine.todayKey === dayKey() ? mine.xpToday || 0 : 0)
+    : tab === 'week' ? (mine.weekKey === weekKey() ? mine.xpThisWeek || 0 : 0)
+    : mine.xp || 0;
+  const myPinnedRank = tab === 'alltime' && mine?.rank ? mine.rank : `${rows.length}+`;
   const xpOf = r => (tab === 'today' ? r?.xpToday : tab === 'week' ? r?.xpThisWeek : r?.xp) || 0;
   const openProfile = r => setViewUid({ uid: r.uid, pseudo: r.pseudo || t('stats.anon') });
 
@@ -196,15 +271,16 @@ function Leaderboard({ user, onOpenConv }) {
                     )}
                     <div style={{ position: 'relative' }}>
                       <PlayerAvatar uid={r.uid} pseudo={r.pseudo} size={isWinner ? 48 : 40}
-                        isMe={isMe} ring={isMe ? null : metal} />
+                        isMe={isMe} ring={isMe ? null : metal} photoURL={isMe ? myPhoto : null} />
                     </div>
                   </div>
 
                   <span style={{ fontSize: '.68rem', maxWidth: 88, textAlign: 'center',
-                    fontWeight: isMe ? 700 : 600, color: isMe ? 'var(--accent)' : 'var(--text-secondary)',
+                    fontWeight: isMe ? 800 : 600, color: isMe ? 'var(--accent)' : 'var(--text-secondary)',
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {r.pseudo || t('stats.anon')}
                   </span>
+                  {isMe && <YouPill label={t('stats.youBadge')} />}
                   <XpValue value={xpOf(r)} size=".7rem" format={formatNumber} />
 
                   {/* La marche : chiffre gravé, teinte du métal */}
@@ -228,6 +304,12 @@ function Leaderboard({ user, onOpenConv }) {
           <div style={{ borderRadius: 12, overflow: 'hidden' }}>
             {rest.map((r, i) => {
               const isMe = r.uid === user?.uid;
+              if (isMe) {
+                return (
+                  <MyRankRow key={r.uid} rank={i + 4} uid={r.uid} pseudo={r.pseudo || t('stats.anon')} photoURL={myPhoto}
+                    xp={xpOf(r)} format={formatNumber} youLabel={t('stats.youBadge')} />
+                );
+              }
               return (
                 <motion.div key={r.uid}
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(i, 8) * .03 }}
@@ -256,6 +338,16 @@ function Leaderboard({ user, onOpenConv }) {
               );
             })}
           </div>
+
+          {/* Outside the top 20: my own row stays visible, pinned under the list. */}
+          {!meInList && mine && !mine.hidden && (
+            <>
+              <div aria-hidden="true" style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '.8rem',
+                letterSpacing: '.3em', padding: '4px 0 0' }}>···</div>
+              <MyRankRow rank={myPinnedRank} uid={user?.uid} pseudo={mine.pseudo || myPseudo || t('stats.anon')} photoURL={myPhoto}
+                xp={myWindowXp} format={formatNumber} youLabel={t('stats.youBadge')} caption={t('stats.yourPosition')} />
+            </>
+          )}
         </>
       )}
 
@@ -375,6 +467,7 @@ export default function PageStats({ user, onOpenConv }) {
   const [data, setData]           = useState(null);
   const [loading, setLoading]     = useState(true);
   const [online, setOnline]       = useState(0);
+  const [othersOnline, setOthersOnline] = useState(0);
   const [totalUsers, setTotalUsers] = useState(0);
 
   useEffect(() => {
@@ -388,7 +481,10 @@ export default function PageStats({ user, onOpenConv }) {
 
   useEffect(() => {
     const unsub = onValue(dbRef(rtdb, 'presence'), snap => {
-      setOnline(Object.keys(snap.val() || {}).length);
+      // Everyone online, me included; "others" decides between the two messages.
+      const uids = Object.keys(snap.val() || {});
+      setOnline(uids.length);
+      setOthersOnline(uids.filter(uid => uid !== user?.uid).length);
     }, () => {});
     // Server-side aggregation: one billed read instead of one per player.
     // (The previous version downloaded the whole collection just to count it.)
@@ -396,7 +492,7 @@ export default function PageStats({ user, onOpenConv }) {
       .then(snap => setTotalUsers(snap.data().count))
       .catch(() => {});
     return () => unsub();
-  }, []);
+  }, [user?.uid]);
 
   if (loading || !data) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '50vh' }}>
@@ -506,7 +602,7 @@ export default function PageStats({ user, onOpenConv }) {
         <h2 style={{ fontSize: '.9rem', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 12px' }}>👥 {t('stats.presenceTitle')}</h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <div>
-            {online > 0 ? (
+            {othersOnline > 0 ? (
               <>
                 <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#27AE60', marginBottom: 4 }}>👥 {online}</div>
                 <div style={{ fontSize: '.8rem', color: 'var(--text-secondary)' }}>{t('stats.onlineText', { count: online })}</div>
@@ -516,7 +612,7 @@ export default function PageStats({ user, onOpenConv }) {
             )}
             {totalUsers > 0 && <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: 6 }}>🎓 {t('stats.totalUsers', { count: totalUsers })}</div>}
           </div>
-          {online > 0 && (
+          {othersOnline > 0 && (
             <div style={{ display: 'flex' }}>
               {Array.from({ length: Math.min(online, 6) }).map((_, i) => (
                 <motion.div key={i} initial={{ opacity: 0, scale: 0 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * .08 }}
@@ -548,7 +644,8 @@ export default function PageStats({ user, onOpenConv }) {
           <Medal size={17} strokeWidth={2.2} color='var(--accent)' />
           {t('stats.rankingTitle')}
         </h2>
-        <Leaderboard user={user} onOpenConv={onOpenConv} />
+        <Leaderboard user={user} onOpenConv={onOpenConv} myPhoto={resolveOwnPhoto(data, user)}
+          myPseudo={data.profile?.pseudo || user?.displayName} />
       </section>
 
       <GuidedTour active={tour.active} step={tour.step} steps={tour.steps}

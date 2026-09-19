@@ -22,6 +22,13 @@
  *
  * The write uses `arrayUnion`, so it can never drop a badge the Cloud Function
  * granted in the meantime.
+ *
+ * LIVE BADGES: rules marked `live` belong to badges that exist only here (no
+ * Cloud Function awards them, no bonus XP). They are re-checked on every
+ * snapshot of the main document (`auditBadges(uid, d, { liveOnly: true })`),
+ * so they unlock the moment their threshold is crossed. The older rules keep
+ * their once-per-session timing, so they never race the Cloud Function that
+ * grants those badges their XP bonus.
  */
 
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
@@ -34,6 +41,14 @@ function countCards(flashcards) {
   return Object.values(flashcards || {})
     .reduce((n, bucket) => n + (Array.isArray(bucket) ? bucket.length : 0), 0);
 }
+
+/** Flashcards marked as known (`ok: true`) across every bucket. */
+function countMastered(flashcards) {
+  return Object.values(flashcards || {})
+    .reduce((n, bucket) => n + (Array.isArray(bucket) ? bucket.filter(c => c?.ok === true).length : 0), 0);
+}
+
+const asArray = v => (Array.isArray(v) ? v : []);
 
 /** How many distinct subjects have at least one flashcard. */
 function subjectsWithCards(flashcards) {
@@ -87,6 +102,28 @@ const DERIVABLE = [
   { id: 'cards_100',    test: d => d.cards >= 100 },
   { id: 'cards_250',    test: d => d.cards >= 250 },
   { id: 'polyglotte',   test: d => d.cardSubjects >= 3 },
+
+  // ── Client-audited badges (live, no bonus XP) ──
+  { id: 'focus_10h',        live: true, test: d => d.focusHours >= 10 },
+  { id: 'focus_25h',        live: true, test: d => d.focusHours >= 25 },
+  { id: 'focus_50h',        live: true, test: d => d.focusHours >= 50 },
+  { id: 'streak21',         live: true, test: d => d.streak >= 21 },
+  { id: 'xp_25000',         live: true, test: d => d.xp >= 25000 },
+  { id: 'level25',          live: true, test: d => d.level >= 25 },
+  { id: 'level40',          live: true, test: d => d.level >= 40 },
+  { id: 'level70',          live: true, test: d => d.level >= 70 },
+  { id: 'blocks_done_25',   live: true, test: d => d.blocksDone >= 25 },
+  { id: 'blocks_done_100',  live: true, test: d => d.blocksDone >= 100 },
+  { id: 'chapters_done_10', live: true, test: d => d.chaptersDone >= 10 },
+  { id: 'chapters_done_50', live: true, test: d => d.chaptersDone >= 50 },
+  { id: 'mastered_50',      live: true, test: d => d.mastered >= 50 },
+  { id: 'mastered_200',     live: true, test: d => d.mastered >= 200 },
+  { id: 'journal_50',       live: true, test: d => d.journal >= 50 },
+  { id: 'conf_stars_10',    live: true, test: d => d.fiveStarChapters >= 10 },
+  { id: 'exams_3',          live: true, test: d => d.datedExams >= 3 },
+  { id: 'grades_10',        live: true, test: d => d.grades >= 10 },
+  { id: 'subjects_10',      live: true, test: d => d.subjects >= 10 },
+  { id: 'all_rounder',      live: true, test: d => d.sessionSubjects >= 4 },
 ];
 
 /** Flatten the stored document into the few numbers the predicates need. */
@@ -100,6 +137,18 @@ export function badgeFacts(main = {}) {
     subjects: Array.isArray(main.subjects) ? main.subjects.length : 0,
     cards: countCards(main.flashcards),
     cardSubjects: subjectsWithCards(main.flashcards),
+    mastered: countMastered(main.flashcards),
+    blocksDone: asArray(main.blocks).filter(b => b?.status === 'done').length,
+    chaptersDone: asArray(main.subjects)
+      .reduce((n, s) => n + asArray(s?.chapters).filter(c => c?.status === 'done').length, 0),
+    fiveStarChapters: asArray(main.subjects).reduce((n, s) => n + asArray(s?.conf).filter(v => v === 5).length, 0),
+    datedExams: asArray(main.subjects).filter(s => s?.date).length,
+    // Real grades only (`note`), not the simulator's `sim` values.
+    grades: asArray(main.subjects).reduce((n, s) => n + asArray(s?.epreuves)
+      .filter(e => e && e.note !== undefined && e.note !== null && e.note !== '').length, 0),
+    journal: asArray(main.journalEntries).length,
+    // Distinct subjects among the last 30 focus sessions (all the history kept).
+    sessionSubjects: new Set(asArray(main.sessions).map(x => x?.subjId).filter(Boolean)).size,
   };
 }
 
@@ -108,13 +157,14 @@ export function badgeFacts(main = {}) {
  * Pure — the caller decides whether to write them.
  *
  * @param {object} main  the `users/{uid}/data/main` document
+ * @param {{ liveOnly?: boolean }} [options]  only the live (client-audited) rules
  * @returns {string[]}   badge ids to add (empty when there is nothing to do)
  */
-export function missingBadges(main = {}) {
+export function missingBadges(main = {}, { liveOnly = false } = {}) {
   const held = new Set(Array.isArray(main.earnedBadges) ? main.earnedBadges : []);
   const facts = badgeFacts(main);
   return DERIVABLE
-    .filter(b => !held.has(b.id) && b.test(facts))
+    .filter(b => (!liveOnly || b.live) && !held.has(b.id) && b.test(facts))
     .map(b => b.id);
 }
 
@@ -124,9 +174,11 @@ export function missingBadges(main = {}) {
  *
  * @returns {Promise<string[]>} the badge ids actually granted
  */
-export async function auditBadges(uid, main) {
+export async function auditBadges(uid, main, options) {
   if (!uid || !main) return [];
-  const missing = missingBadges(main);
+  const live = Boolean(options?.liveOnly);
+  if (live && liveAuditOff) return [];
+  const missing = missingBadges(main, options);
   if (!missing.length) return [];
   try {
     await updateDoc(doc(db, 'users', uid, 'data', 'main'), {
@@ -134,7 +186,13 @@ export async function auditBadges(uid, main) {
     });
     return missing;
   } catch (e) {
-    reportSaveError(e, 'Badges — retroactive unlock');
+    // The live pass runs on every snapshot: after one refusal, stop for this
+    // session instead of repeating the write (and the error toast) each time.
+    if (live) liveAuditOff = true;
+    else reportSaveError(e, 'Badges — retroactive unlock');
     return [];
   }
 }
+
+/** Set once a live write was refused, so it is not retried every snapshot. */
+let liveAuditOff = false;

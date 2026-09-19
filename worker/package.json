@@ -1,0 +1,22 @@
+{
+  "name": "blokly-calendar-worker",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Cloudflare Worker that turns a user's private .ics feed into plain events for the Blokly planner.",
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "dev:ai": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "ical.js": "^2.2.1"
+  },
+  "devDependencies": {
+    "wrangler": "^4.135.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "workerd@1.20260918.1": true
+  }
+}

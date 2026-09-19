@@ -7,6 +7,10 @@
  *
  * Public decks live in the top-level `public_decks` collection.
  *
+ * The add-card modal can also generate cards from pasted course notes through
+ * the Cloudflare worker (see src/lib/aiFlashcards.js). Generated cards are
+ * saved exactly like imported ones (`{ q, a, ok: null }`).
+ *
  * SHARE CODE CAVEAT: a deck's share code is the first 8 chars of its Firestore
  * document id (uppercased). Two ids can in theory share that prefix (collision),
  * and importing by code scans the public decks client-side because Firestore
@@ -26,16 +30,53 @@ import FlashcardMasonry from '../components/FlashcardMasonry';
 import { useTranslation } from '../i18n';
 import { GuidedTour, useGuidedTour, TourButton } from '../components/GuidedTour';
 import { reportSaveError } from '../lib/notify';
+import { Sparkles, X } from 'lucide-react';
+import {
+  generateAiFlashcards, isAiFlashcardsAvailable,
+  AI_MIN_TEXT_CHARS, AI_MAX_TEXT_CHARS, AI_CARD_COUNTS,
+} from '../lib/aiFlashcards';
+
+/** Worker error code → i18n key shown under the AI generator. */
+const AI_ERROR_KEYS = {
+  daily_limit: 'flashcards.aiErrorLimit',
+  text_too_short: 'flashcards.aiErrorShort',
+  text_too_long: 'flashcards.aiErrorLong',
+  ai_busy: 'flashcards.aiErrorBusy',
+  network: 'flashcards.aiErrorNetwork',
+};
 
 // ── Add / edit card modal ────────────────────────────────────────────────────
-function CardModal({ card, subjects, currentSubjId, currentChapIdx, onSave, onClose }) {
-  const { t } = useTranslation();
+// Modes: 'manual' (one card), 'import' (pasted Q/R text), 'ai' (generated from
+// course notes by the worker, shown only when the worker is configured).
+function CardModal({ user, card, subjects, currentSubjId, currentChapIdx, onSave, onClose }) {
+  const { t, lang } = useTranslation();
   const [sid, setSid] = useState(card?.subjId ?? currentSubjId ?? '');
   const [ci, setCi]   = useState(card?.chapIdx ?? currentChapIdx ?? 0);
   const [q, setQ]     = useState(card?.q ?? '');
   const [a, setA]     = useState(card?.a ?? '');
-  const [importMode, setImportMode] = useState(false);
+  const [mode, setMode] = useState('manual');
+  const importMode = mode === 'import';
   const [importText, setImportText] = useState('');
+  const [aiText, setAiText]           = useState('');
+  const [aiCount, setAiCount]         = useState(AI_CARD_COUNTS[1]);
+  const [aiCards, setAiCards]         = useState([]);
+  const [aiLoading, setAiLoading]     = useState(false);
+  const [aiError, setAiError]         = useState('');
+  const [aiRemaining, setAiRemaining] = useState(null);
+
+  async function handleGenerate() {
+    setAiLoading(true);
+    setAiError('');
+    try {
+      const { cards, remaining } = await generateAiFlashcards(user, { text: aiText, count: aiCount, lang });
+      setAiCards(cards);
+      setAiRemaining(remaining);
+    } catch (e) {
+      setAiError(AI_ERROR_KEYS[e.code] || 'flashcards.aiErrorGeneric');
+    } finally {
+      setAiLoading(false);
+    }
+  }
 
   const subj = subjects.find(s => String(s.id) === String(sid));
   const chaps = subj?.chapters || Array.from({ length: subj?.chaps || 0 }, (_, i) => ({ name: t('flashcards.chapterFull', { count: i + 1 }) }));
@@ -57,7 +98,10 @@ function CardModal({ card, subjects, currentSubjId, currentChapIdx, onSave, onCl
   }
 
   function handleSave() {
-    if (importMode) {
+    if (mode === 'ai') {
+      if (!aiCards.length) return;
+      onSave(parseInt(sid, 10), ci, aiCards);
+    } else if (importMode) {
       const cards = parseImport(importText);
       if (cards.length) onSave(parseInt(sid, 10), ci, cards);
     } else {
@@ -82,11 +126,17 @@ function CardModal({ card, subjects, currentSubjId, currentChapIdx, onSave, onCl
         </div>
         {!card && (
           <div style={{ display: 'flex', gap: 6, background: 'var(--bg-card)', padding: 4, borderRadius: 10 }}>
-            {[{ v: false, l: `✏️ ${t('flashcards.manual')}` }, { v: true, l: `📥 ${t('flashcards.import')}` }].map(m => (
-              <button key={String(m.v)} onClick={() => setImportMode(m.v)}
+            {[
+              { v: 'manual', l: `✏️ ${t('flashcards.manual')}` },
+              { v: 'import', l: `📥 ${t('flashcards.import')}` },
+              ...(isAiFlashcardsAvailable() ? [{ v: 'ai', l: t('flashcards.aiTab'), icon: Sparkles }] : []),
+            ].map(m => (
+              <button key={m.v} onClick={() => setMode(m.v)}
                 style={{ flex: 1, padding: '6px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: '.75rem',
-                  background: importMode === m.v ? 'var(--accent-subtle)' : 'transparent',
-                  color: importMode === m.v ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                  background: mode === m.v ? 'var(--accent-subtle)' : 'transparent',
+                  color: mode === m.v ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                {m.icon && <m.icon size={13} strokeWidth={2} aria-hidden="true" />}
                 {m.l}
               </button>
             ))}
@@ -106,7 +156,58 @@ function CardModal({ card, subjects, currentSubjId, currentChapIdx, onSave, onCl
             </select>
           </div>
         </div>
-        {importMode ? (
+        {mode === 'ai' ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div>
+              <label style={lbl} htmlFor="ai-notes">{t('flashcards.aiLabel')}</label>
+              <textarea id="ai-notes" value={aiText} onChange={e => setAiText(e.target.value)} rows={6}
+                maxLength={AI_MAX_TEXT_CHARS} placeholder={t('flashcards.aiPlaceholder')}
+                style={{ ...inp, resize: 'vertical' }} />
+              <div style={{ fontSize: '.65rem', color: 'var(--text-muted)', marginTop: 3 }}>
+                {aiText.trim().length < AI_MIN_TEXT_CHARS
+                  ? t('flashcards.aiMinChars', { count: AI_MIN_TEXT_CHARS })
+                  : t('flashcards.aiCharCount', { count: aiText.length, max: AI_MAX_TEXT_CHARS })}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+              <div style={{ flex: 1 }}>
+                <label style={lbl} htmlFor="ai-count">{t('flashcards.aiCount')}</label>
+                <select id="ai-count" value={aiCount} onChange={e => setAiCount(parseInt(e.target.value, 10))} style={inp}>
+                  {AI_CARD_COUNTS.map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+              <button onClick={handleGenerate} disabled={aiLoading || aiText.trim().length < AI_MIN_TEXT_CHARS}
+                style={{ flex: 2, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border-strong)', background: 'var(--accent-subtle)',
+                  color: 'var(--text-primary)', fontSize: '.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  cursor: aiLoading || aiText.trim().length < AI_MIN_TEXT_CHARS ? 'not-allowed' : 'pointer',
+                  opacity: aiLoading || aiText.trim().length < AI_MIN_TEXT_CHARS ? .55 : 1 }}>
+                <Sparkles size={14} strokeWidth={2} aria-hidden="true" />
+                {aiLoading ? t('flashcards.aiGenerating') : aiCards.length ? t('flashcards.aiRegenerate') : t('flashcards.aiGenerate')}
+              </button>
+            </div>
+            {aiError && <div role="alert" style={{ fontSize: '.72rem', color: 'var(--danger)' }}>{t(aiError)}</div>}
+            {aiCards.length > 0 && (
+              <ul aria-label={t('flashcards.aiPreview')} style={{ listStyle: 'none', margin: 0, padding: 0, maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {aiCards.map((c, i) => (
+                  <li key={`${i}-${c.q}`} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '8px 10px', borderRadius: 8, background: 'var(--bg-card)' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--text-primary)' }}>{c.q}</div>
+                      <div style={{ fontSize: '.72rem', color: 'var(--text-secondary)', marginTop: 2 }}>{c.a}</div>
+                    </div>
+                    <button onClick={() => setAiCards(cards => cards.filter((_, j) => j !== i))} aria-label={t('flashcards.aiRemoveCard')}
+                      style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 2, display: 'flex' }}>
+                      <X size={14} strokeWidth={2} aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div style={{ fontSize: '.65rem', color: 'var(--text-muted)' }}>
+              {t('flashcards.aiHint')}
+              {aiRemaining !== null && ` ${t('flashcards.aiRemaining', { count: aiRemaining })}`}
+            </div>
+          </div>
+        ) : importMode ? (
           <div>
             <label style={lbl}>{t('flashcards.importLabel')}</label>
             <textarea value={importText} onChange={e => setImportText(e.target.value)} rows={6}
@@ -124,7 +225,7 @@ function CardModal({ card, subjects, currentSubjId, currentChapIdx, onSave, onCl
           <button onClick={onClose} style={{ flex: 1, padding: '10px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: '.83rem', cursor: 'pointer' }}>{t('common.cancel')}</button>
           <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: .98 }} onClick={handleSave}
             style={{ flex: 2, padding: '10px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#4A90D9,#6366f1)', color: '#fff', fontSize: '.83rem', fontWeight: 700, cursor: 'pointer' }}>
-            {importMode ? `📥 ${t('flashcards.importBtn')}` : card ? `✓ ${t('common.save')}` : `+ ${t('flashcards.addBtn')}`}
+            {mode === 'ai' ? t('flashcards.aiAddBtn', { count: aiCards.length }) : importMode ? `📥 ${t('flashcards.importBtn')}` : card ? `✓ ${t('common.save')}` : `+ ${t('flashcards.addBtn')}`}
           </motion.button>
         </div>
       </motion.div>
@@ -838,7 +939,7 @@ export default function PageFlashcards({ user }) {
           </motion.div>
         )}
         {showCardModal && (
-          <CardModal card={editCard} subjects={subjects} currentSubjId={parseInt(selSubj, 10)} currentChapIdx={selChap}
+          <CardModal user={user} card={editCard} subjects={subjects} currentSubjId={parseInt(selSubj, 10)} currentChapIdx={selChap}
             onSave={handleSaveCard} onClose={() => { setShowCardModal(false); setEditCard(null); }} />
         )}
         {showShare && subj && (

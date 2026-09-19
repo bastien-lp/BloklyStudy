@@ -1,14 +1,22 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useTranslation } from '../i18n';
+import { formatDuration } from '../lib/duration';
+import { eventsForDay, formatEventTime, DEFAULT_CALENDAR_COLOR } from '../lib/externalCalendars';
+
+/** Imported events of a day, all-day first then by start time. */
+function externalForDay(events, day) {
+  const { timed, allDay } = eventsForDay(events, day);
+  return [...allDay, ...timed.sort((a, b) => a.start - b.start)];
+}
 
 function hm(h) {
-  const hh=Math.floor(h), mm=h%1===0.5?'30':'00';
+  const hh=Math.floor(h), mm=String(Math.round((h%1)*60)).padStart(2,'0');
   return `${hh}h${mm!=='00'?mm:''}`;
 }
 
-export default function MonthView({ blocks, subjects, onAddBlock, onToggleBlock, onDeleteBlock }) {
-  const { t, formatDate } = useTranslation();
+export default function MonthView({ blocks, subjects, onAddBlock, onToggleBlock, onDeleteBlock, externalEvents = [], calendarColorOf = () => DEFAULT_CALENDAR_COLOR }) {
+  const { t, lang, formatDate } = useTranslation();
   const [monthOff, setMonthOff] = useState(0);
   const [selectedDay, setSelectedDay] = useState(null);
 
@@ -75,6 +83,10 @@ export default function MonthView({ blocks, subjects, onAddBlock, onToggleBlock,
   const selectedDateStr = selectedDay?.toISOString().slice(0,10);
   const selectedBlocks  = selectedDateStr ? (blocksByDate[selectedDateStr]||[]) : [];
   const selectedExams   = selectedDateStr ? (examsByDate[selectedDateStr]||[]) : [];
+  const selectedExternal = useMemo(
+    () => selectedDay ? externalForDay(externalEvents, selectedDay) : [],
+    [externalEvents, selectedDay]
+  );
 
   // Ne pas afficher la 6ème semaine si vide
   const weeksToShow = useMemo(() => {
@@ -149,6 +161,9 @@ export default function MonthView({ blocks, subjects, onAddBlock, onToggleBlock,
                 const isSelected= selectedDay?.toDateString()===day.toDateString();
                 const dayBlocks = blocksByDate[dateStr]||[];
                 const dayExams  = examsByDate[dateStr]||[];
+                const dayExternal = externalForDay(externalEvents, day);
+                const externalSlots = Math.max(0, 3 - dayBlocks.length);
+                const hiddenCount = Math.max(0, dayBlocks.length - 3) + Math.max(0, dayExternal.length - externalSlots);
 
                 return (
                   <motion.div key={di}
@@ -194,9 +209,20 @@ export default function MonthView({ blocks, subjects, onAddBlock, onToggleBlock,
                           </div>
                         );
                       })}
-                      {dayBlocks.length>3 && (
+                      {dayExternal.slice(0, externalSlots).map(e => {
+                        const color = calendarColorOf(e.calId);
+                        return (
+                          <div key={e.key} title={e.title} style={{ fontSize:'.58rem', padding:'1px 5px', borderRadius:4,
+                            background:`${color}22`, color:'var(--text-primary)',
+                            overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                            border:`1px dashed ${color}80`, borderLeft:`2px solid ${color}` }}>
+                            {e.title}
+                          </div>
+                        );
+                      })}
+                      {hiddenCount>0 && (
                         <div style={{ fontSize:'.55rem', color:'var(--text-muted)', paddingLeft:4 }}>
-                          {t('planning.monthAndMore', { count: dayBlocks.length-3 })}
+                          {t('planning.monthAndMore', { count: hiddenCount })}
                         </div>
                       )}
                     </div>
@@ -231,6 +257,28 @@ export default function MonthView({ blocks, subjects, onAddBlock, onToggleBlock,
                     fontSize:'1.1rem',cursor:'pointer' }}>×</button>
               </div>
 
+              {/* Imported calendar events (read-only) */}
+              {selectedExternal.length>0 && (
+                <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                  {selectedExternal.map(e => {
+                    const color = calendarColorOf(e.calId);
+                    return (
+                      <div key={e.key} title={t('planning.calendarReadOnly')}
+                        style={{ padding:'6px 10px', borderRadius:9, background:`${color}14`,
+                          border:`1px dashed ${color}66`, borderLeft:`3px solid ${color}` }}>
+                        <div style={{ fontSize:'.74rem', fontWeight:600, color:'var(--text-primary)',
+                          overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                          {e.title}
+                        </div>
+                        <div style={{ fontSize:'.6rem', color:'var(--text-muted)', marginTop:2 }}>
+                          {e.allDay ? t('planning.calendarAllDay') : `${formatEventTime(e.start, lang)}–${formatEventTime(e.end, lang)}`}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               {/* Blocs du jour */}
               <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:320, overflowY:'auto' }}>
                 {selectedBlocks.length===0 ? (
@@ -254,7 +302,7 @@ export default function MonthView({ blocks, subjects, onAddBlock, onToggleBlock,
                           {subj?.name||'?'}
                         </div>
                         <div style={{ fontSize:'.62rem', color:'var(--text-muted)', marginTop:2 }}>
-                          {hm(b.hour)} · {b.dur}h {b.task&&`· ${b.task}`}
+                          {hm(b.hour)} · {formatDuration(b.dur, lang)} {b.task&&`· ${b.task}`}
                         </div>
                       </div>
                       <button onClick={()=>onToggleBlock(b.id)}

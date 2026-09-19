@@ -14,7 +14,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, rtdb } from '../firebase/config';
 import { ref as dbRef, onValue, set, remove, onDisconnect } from 'firebase/database';
-import { Square } from 'lucide-react';
+import { Square, FolderOpen } from 'lucide-react';
 import UserProfileModal from '../components/UserProfileModal';
 import {
   collection, doc, getDoc, getDocs, setDoc, deleteDoc, addDoc,
@@ -23,6 +23,7 @@ import {
 import { useTranslation } from '../i18n';
 import { GuidedTour, useGuidedTour, TourButton } from '../components/GuidedTour';
 import { reportSaveError, notify } from '../lib/notify';
+import { resolveOwnPhoto } from '../lib/profilePhoto';
 import {
   createSession, joinSession, pauseSession, resumeSession, skipPhase,
   endSession, clearSession, subscribeSession, subscribeParticipants, phaseAt, sessionEndMs, startSession,
@@ -34,6 +35,10 @@ import { bankMyGroupSession } from '../lib/groupSessionBank';
 import { GroupSessionBar, SessionFullscreen, NewSessionModal } from '../components/GroupSessionPanel';
 import { ShareDeckModal, DeckBubble, ImportDeckModal } from '../components/FlashcardShare';
 import { cardKey, MAX_DECK_CARDS } from '../lib/flashcardDeck';
+import { isDocsAvailable, shareDocToGroup } from '../lib/docs';
+import { docMessageSummary } from '../lib/groupDocMessage';
+import { DocBubble, GroupDocsPanel, GroupDocPicker } from '../components/docs/GroupDocs';
+import DocViewer from '../components/docs/DocViewer';
 
 function generateCode() {
   return 'BLK-' + Math.random().toString(36).slice(2, 6).toUpperCase();
@@ -92,6 +97,7 @@ function messagePreview(msg, t) {
   if (msg.type === 'focus')     return `⏱ ${t('groups.focusShared')}`;
   if (msg.type === 'sessionEnd') return t('groups.sessionEndedPreview');
   if (msg.type === 'deck')      return t('groups.deckPreview');
+  if (msg.type === 'doc')       return t('docs.bubblePreview', { name: msg.doc?.name || '' });
   if (msg.type === 'flashcard') return `🃏 ${msg.question || t('groups.flashcard')}`;
   if (msg.type === 'link')      return `🔗 ${msg.title || msg.url || t('groups.link')}`;
   return msg.text || '';
@@ -113,7 +119,7 @@ function renderMessageText(text, memberNames) {
 }
 
 function MessageBubble({ msg, isMe, showAvatar, showTime, onReact, onDelete, onViewUser, onVote, onSaveCard, onJoinFocus, myUid,
-                        onReply, onEdit, onPin, onJumpTo, memberNames, mentionsMe }) {
+                        onReply, onEdit, onPin, onJumpTo, memberNames, mentionsMe, user, onOpenDoc }) {
   const { t, formatDate } = useTranslation();
   const [showReactions, setShowReactions] = useState(false);
   const longPressRef = useRef(null);
@@ -225,7 +231,7 @@ function MessageBubble({ msg, isMe, showAvatar, showTime, onReact, onDelete, onV
             // Rich cards (poll/focus/flashcard) keep a neutral surface so their
             // inner content stays legible; only plain text uses the accent tint.
             const isRich = msg.type === 'poll' || msg.type === 'focus' || msg.type === 'flashcard'
-              || msg.type === 'deck' || msg.type === 'link';
+              || msg.type === 'deck' || msg.type === 'link' || msg.type === 'doc';
             const bubbleBg = isRich ? 'var(--bg-card)' : isMe ? 'var(--accent)' : 'var(--bg-card-hover)';
             const bubbleColor = isRich ? 'var(--text-primary)' : isMe ? 'var(--on-accent, #fff)' : 'var(--text-primary)';
             return (
@@ -254,6 +260,8 @@ function MessageBubble({ msg, isMe, showAvatar, showTime, onReact, onDelete, onV
                   <FlashcardBubble msg={msg} onSave={onSaveCard} />
                 ) : msg.type === 'link' ? (
                   <LinkBubble msg={msg} />
+                ) : msg.type === 'doc' ? (
+                  <DocBubble user={user} msg={msg} onOpen={onOpenDoc} />
                 ) : (
                   <span>{renderMessageText(msg.text, memberNames)}{msg.editedAt && <span style={{ fontSize: '.6rem', opacity: .6, marginLeft: 5 }}>({t('groups.edited')})</span>}</span>
                 )}
@@ -703,6 +711,10 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
   const [myFlashcards, setMyFlashcards] = useState({}); // my cards, for duplicate detection
   const [showCardShare, setShowCardShare] = useState(false); // share-a-flashcard composer
   const [showLinkShare, setShowLinkShare] = useState(false); // share-a-link composer
+  const [showDocPicker, setShowDocPicker] = useState(false); // share-a-document composer
+  const [showGroupDocs, setShowGroupDocs] = useState(false); // the group's shared library
+  const [openDocMsg, setOpenDocMsg]       = useState(null);  // a doc message opened in the viewer
+  const docsEnabled = isDocsAvailable();
   const [msgLimit, setMsgLimit]   = useState(40);   // pagination window (latest N)
   const [hasMore, setHasMore]     = useState(false);// whether older messages exist
   const [replyTo, setReplyTo]     = useState(null); // { id, pseudo, preview }
@@ -1003,6 +1015,12 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
     });
   }
 
+  // Register the share with the worker (it checks membership), then announce it.
+  async function sendDocHere(d) {
+    await shareDocToGroup(user, d.id, group.id, pseudo);
+    await send({ type: 'doc', text: d.name, doc: docMessageSummary(d) });
+  }
+
   async function sendLink(title, url) {
     await send({ type: 'link', text: '', title, url });
   }
@@ -1138,6 +1156,13 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
             <span style={{ fontSize: '.62rem', color: 'var(--text-muted)' }}>{t('groups.nOnline', { count: onlineCount })} · {t('groups.membersCount', { count: members.length })}</span>
           </div>
         </div>
+        {docsEnabled && (
+          <button onClick={() => setShowGroupDocs(true)} aria-label={t('docs.groupDocsTitle')} title={t('docs.groupDocsTitle')}
+            style={{ width: 32, height: 32, borderRadius: 10, border: 'none', background: 'var(--bg-card-hover)', color: 'var(--text-secondary)',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <FolderOpen size={16} />
+          </button>
+        )}
         <button onClick={() => setShowMembers(true)}
           style={{ display: 'flex', alignItems: 'center', background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}>
           {members.slice(0, 4).map(([uid, m], i) => (
@@ -1247,7 +1272,8 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
                 onReact={handleReact} onDelete={handleDeleteMsg} onViewUser={setViewUser}
                 myUid={user.uid} onVote={handleVote} onJoinFocus={handleJoinFocus} onSaveCard={handleSaveCard}
                 onReply={startReply} onEdit={startEdit} onPin={pinMessage} onJumpTo={jumpTo}
-                memberNames={memberNames} mentionsMe={Array.isArray(m.mentions) && m.mentions.includes(user.uid)} />
+                memberNames={memberNames} mentionsMe={Array.isArray(m.mentions) && m.mentions.includes(user.uid)}
+                user={user} onOpenDoc={docsEnabled ? setOpenDocMsg : undefined} />
               )}
             </div>
           );
@@ -1276,6 +1302,7 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
                 { icon: '📊', label: t('groups.poll'), action: () => { setShowPoll(true); setShowTools(false); } },
                 { icon: '🃏', label: t('groups.flashcard'), action: () => { setShowCardShare(true); setShowTools(false); } },
                 { icon: '🔗', label: t('groups.link'), action: () => { setShowLinkShare(true); setShowTools(false); } },
+                ...(docsEnabled ? [{ icon: <FolderOpen size={14} aria-hidden="true" />, label: t('groups.document'), action: () => { setShowDocPicker(true); setShowTools(false); } }] : []),
                 { icon: '⏱', label: t('groups.sessionStart'), action: () => { setShowNewSession(true); setShowTools(false); } },
               ].map((tool, i) => (
                 <motion.button key={i} whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={tool.action}
@@ -1366,6 +1393,15 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
 
       <AnimatePresence>
         {showLinkShare && <LinkShareModal onSend={sendLink} onClose={() => setShowLinkShare(false)} />}
+        {showDocPicker && <GroupDocPicker user={user} groupId={group.id} onPick={sendDocHere} onClose={() => setShowDocPicker(false)} />}
+        {showGroupDocs && (
+          <GroupDocsPanel user={user} group={group} onClose={() => setShowGroupDocs(false)}
+            onShareNew={() => { setShowGroupDocs(false); setShowDocPicker(true); }} />
+        )}
+        {openDocMsg && (
+          <DocViewer user={user} index={0} onIndexChange={() => {}} onClose={() => setOpenDocMsg(null)}
+            docs={[{ ...openDocMsg.doc, sharedBy: openDocMsg.pseudo, mine: openDocMsg.uid === user.uid, createdAt: openDocMsg.sentAt }]} />
+        )}
       </AnimatePresence>
 
       {/* Members panel — MOBILE: sliding overlay */}
@@ -1728,7 +1764,7 @@ function GroupRow({ group, user, onOpen, unread = 0, session = null }) {
   );
 }
 
-function CreateGroupModal({ user, onCreated, onClose }) {
+function CreateGroupModal({ user, photoURL, onCreated, onClose }) {
   const { t } = useTranslation();
   const [name, setName]   = useState('');
   const [desc, setDesc]   = useState('');
@@ -1748,7 +1784,7 @@ function CreateGroupModal({ user, onCreated, onClose }) {
         id: groupId, name: name.trim(), desc: desc.trim(), emoji, code,
         createdBy: user.uid, createdByPseudo: pseudo,
         createdAt: new Date().toISOString(), typing: {},
-        members: { [user.uid]: { pseudo, joinedAt: new Date().toISOString(), photoURL: user.photoURL || null } },
+        members: { [user.uid]: { pseudo, joinedAt: new Date().toISOString(), photoURL: photoURL || null } },
         memberIds: [user.uid]
       });
       onCreated(); onClose();
@@ -1815,6 +1851,7 @@ export default function PageGroups({ user, prefs, unreadByGroup = {}, onMarkRead
   const [openPrivate, setOpenPrivate] = useState(null); // friend we're chatting with
   const [privatePreviews, setPrivatePreviews] = useState({}); // { convId: lastMessage }
   const [lastReadPrivate, setLastReadPrivate] = useState({}); // { convId: ISO last-read date }
+  const [myPhoto, setMyPhoto] = useState(user?.photoURL || null); // copied into member entries on join/create
   const pseudo = user.displayName || user.email?.split('@')[0] || 'Anonyme';
 
   // Real-time: only the groups the user is a member of.
@@ -1868,7 +1905,9 @@ export default function PageGroups({ user, prefs, unreadByGroup = {}, onMarkRead
   useEffect(() => {
     if (!user) return;
     const unsub = onSnapshot(doc(db, 'users', user.uid, 'data', 'main'), snap => {
-      if (snap.exists()) setLastReadPrivate(snap.data().lastReadPrivate || {});
+      if (!snap.exists()) return;
+      setLastReadPrivate(snap.data().lastReadPrivate || {});
+      setMyPhoto(resolveOwnPhoto(snap.data(), user));
     });
     return unsub;
   }, [user.uid]);
@@ -1909,7 +1948,7 @@ export default function PageGroups({ user, prefs, unreadByGroup = {}, onMarkRead
       if (!found) { setJoinError(t('groups.invalidCode')); return; }
       if (found.members?.[user.uid]) { setJoinError(t('groups.alreadyMember')); return; }
       await updateDoc(doc(db, 'groups', found.id), {
-        [`members.${user.uid}`]: { pseudo, joinedAt: new Date().toISOString(), photoURL: user.photoURL || null },
+        [`members.${user.uid}`]: { pseudo, joinedAt: new Date().toISOString(), photoURL: myPhoto },
         memberIds: arrayUnion(user.uid)
       });
       setJoinCode('');
@@ -2152,7 +2191,7 @@ export default function PageGroups({ user, prefs, unreadByGroup = {}, onMarkRead
       })()}
 
       <AnimatePresence>
-        {showCreate && <CreateGroupModal user={user} onCreated={loadGroups} onClose={() => setShowCreate(false)} />}
+        {showCreate && <CreateGroupModal user={user} photoURL={myPhoto} onCreated={loadGroups} onClose={() => setShowCreate(false)} />}
       </AnimatePresence>
 
       </div>

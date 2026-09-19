@@ -7,6 +7,8 @@
  * carry { day(0-6), hour, dur, status, weekOffset, dateStr, ... } and are
  * positioned on a time grid (PX_H px per hour). Supports drag from the subject
  * sidebar, drag-move, resize, undo/redo, templates, print and a guided tour.
+ * Imported .ics calendars (`users/{uid}/data/calendars`, fetched through the
+ * calendar worker on each open) are overlaid read-only on the week and month views.
  *
  * Props: { user }
  */
@@ -20,12 +22,19 @@ import { GuidedTour, useGuidedTour, TourButton } from '../components/GuidedTour'
 import {
   Plus, Pencil, BookOpen, Target, CheckSquare, Square, ArrowDown, Trash2,
   ClipboardList, Save, MapPin, Printer, Settings, GraduationCap, Check, RotateCcw, Undo2, Redo2,
+  CalendarPlus,
 } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { formatDuration } from '../lib/duration';
 import { reportSaveError } from '../lib/notify';
+import { CalendarsModal, ExternalEventBlock, AllDayEventChips } from '../components/ExternalCalendars';
+import {
+  subscribeCalendars, saveCalendars, fetchExternalEvents, eventsForDay, DEFAULT_CALENDAR_COLOR, isCalendarWorkerAvailable,
+} from '../lib/externalCalendars';
 
 // ── Constants ──
 const PX_H     = 56;
+const SLOT_H   = 0.25; // planner granularity: blocks snap to quarter hours
 const UNDO_MAX = 50;
 
 function getWeekStart(offset = 0) {
@@ -52,13 +61,30 @@ function printTint(hex) {
 
 function fmtH(h, lang) {
   const hh = String(Math.floor(h)).padStart(2, '0');
-  if (lang === 'fr') return `${hh}h${h % 1 === 0.5 ? '30' : ''}`;
-  return `${hh}:${h % 1 === 0.5 ? '30' : '00'}`;
+  const mm = String(Math.round((h % 1) * 60)).padStart(2, '0');
+  if (lang === 'fr') return `${hh}h${mm === '00' ? '' : mm}`;
+  return `${hh}:${mm}`;
 }
+
+/**
+ * Quarter-hour ticks for the hour gutter. The grid itself only draws hour and
+ * half-hour lines; these short marks at :15 / :30 / :45 show the snap steps
+ * without adding lines across the columns.
+ */
+function QuarterTicks({ hours }) {
+  return Array.from({ length: hours }, (_, i) => [0.25, 0.5, 0.75].map(q => (
+    <div key={`${i}-${q}`} aria-hidden="true"
+      style={{ position: 'absolute', top: (i + q) * PX_H, right: 0, width: q === 0.5 ? 7 : 4,
+        borderTop: '1px solid var(--border-strong)', pointerEvents: 'none' }} />
+  )));
+}
+
+/** Round a decimal hour to the nearest planner slot (quarter hour). */
+const snapToSlot = h => Math.round(h / SLOT_H) * SLOT_H;
 
 function snapHour(y, top, startH, pxH) {
   const raw = (y - top) / pxH + startH;
-  return Math.max(startH, Math.min(24 - 0.5, Math.round(raw * 2) / 2));
+  return Math.max(startH, Math.min(24 - SLOT_H, snapToSlot(raw)));
 }
 
 function findFreeSlot(blocks, newBlock) {
@@ -103,7 +129,7 @@ function BlockModal({ block, weekStart, subjects, onSave, onClose, mode = 'add' 
     const d = new Date(weekStart); d.setDate(weekStart.getDate() + day); return d;
   }, [weekStart, day]);
 
-  const hours = Array.from({ length: 48 }, (_, i) => i * 0.5);
+  const hours = Array.from({ length: 24 / SLOT_H }, (_, i) => i * SLOT_H);
 
   const inp = { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border-strong)',
     background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: '.83rem', fontFamily: 'var(--font-family)', boxSizing: 'border-box', outline: 'none' };
@@ -196,13 +222,13 @@ function BlockModal({ block, weekStart, subjects, onSave, onClose, mode = 'add' 
         <div>
           <label style={{ fontSize: '.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>{t('planning.duration')}</label>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {[0.5, 1, 1.5, 2, 3, 4, 6].map(d => (
+            {[0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6].map(d => (
               <button key={d} onClick={() => setDur(d)}
                 style={{ padding: '6px 10px', borderRadius: 8,
                   border: `1px solid ${dur === d ? 'var(--accent)' : 'var(--border)'}`,
                   background: dur === d ? 'var(--accent-subtle)' : 'transparent',
                   color: dur === d ? 'var(--accent)' : 'var(--text-muted)', fontSize: '.75rem', cursor: 'pointer' }}>
-                {d}h
+                {d < 1 ? t('planning.durationMinutes', { count: d * 60 }) : formatDuration(d, lang)}
               </button>
             ))}
           </div>
@@ -307,7 +333,7 @@ function ContextMenu({ x, y, block, subject, onToggle, onEdit, onDelete, onMove,
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: color }} />
           <span style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--text-primary)' }}>{block.type === 'custom' ? block.label : (subject?.name || '?')}</span>
         </div>
-        <div style={{ fontSize: '.62rem', color: 'var(--text-muted)', marginTop: 2 }}>{fmtH(block.hour, lang)} · {block.dur}h</div>
+        <div style={{ fontSize: '.62rem', color: 'var(--text-muted)', marginTop: 2 }}>{fmtH(block.hour, lang)} · {formatDuration(block.dur, lang)}</div>
       </div>
       {items.map((item, i) => (
         <button key={i} onClick={item.action}
@@ -389,7 +415,7 @@ function CourseBlock({ block, subject, onDelete, onToggle, onEdit, onMoveToFree,
   }
   function handleTouchEnd() { if (longRef.current) { clearTimeout(longRef.current); longRef.current = null; } }
 
-  const blockH = Math.max(PX_H * 0.5, block.dur * PX_H);
+  const blockH = Math.max(PX_H * SLOT_H, block.dur * PX_H);
   const top = (block.hour - gridStartH) * PX_H;
 
   return (
@@ -635,6 +661,13 @@ export default function PagePlanning({ user }) {
   const [addModal, setAddModal]         = useState(null);
   const [editBlock, setEditBlock]       = useState(null);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showCalendars, setShowCalendars] = useState(false);
+
+  // Imported (.ics) calendars — read-only overlay, never merged into `blocks`.
+  const [calendars, setCalendars]           = useState([]);
+  const [externalEvents, setExternalEvents] = useState([]);
+  const [calendarErrors, setCalendarErrors] = useState({});
+  const [calendarServiceDown, setCalendarServiceDown] = useState(false);
 
   const nidRef  = useRef(1000);
   const gridRef = useRef(null);
@@ -668,6 +701,48 @@ export default function PagePlanning({ user }) {
     });
     return unsub;
   }, [user]);
+
+  useEffect(() => {
+    if (!user || !isCalendarWorkerAvailable()) return;
+    return subscribeCalendars(user.uid, setCalendars);
+  }, [user]);
+
+  // Refetch events whenever the set of feeds changes (not on a color change),
+  // which also covers "every time the page opens". No cache, by design.
+  const feedsKey = calendars.map(c => `${c.id}|${c.url}`).join('\n');
+  useEffect(() => {
+    if (!user || !feedsKey) return;
+    let cancelled = false;
+    fetchExternalEvents(user)
+      .then(({ events, errors }) => {
+        if (cancelled) return;
+        setExternalEvents(events);
+        setCalendarErrors(errors);
+        setCalendarServiceDown(false);
+      })
+      .catch(e => {
+        if (cancelled) return;
+        console.warn('[Planning] external calendars unavailable:', e.message);
+        setCalendarServiceDown(true);
+      });
+    return () => { cancelled = true; };
+  }, [user, feedsKey]);
+
+  // Events of calendars that were just removed disappear immediately.
+  const visibleExternalEvents = useMemo(() => {
+    const ids = new Set(calendars.map(c => c.id));
+    return externalEvents.filter(e => ids.has(e.calId));
+  }, [externalEvents, calendars]);
+
+  const calendarColorOf = useCallback(
+    calId => calendars.find(c => c.id === calId)?.color || DEFAULT_CALENDAR_COLOR,
+    [calendars]
+  );
+
+  async function handleSaveCalendars(next) {
+    try { await saveCalendars(user.uid, next); }
+    catch (e) { reportSaveError(e, 'Planning — calendars'); }
+  }
 
   const save = useCallback(async (b) => {
     if (!user) return;
@@ -709,6 +784,9 @@ export default function PagePlanning({ user }) {
   const weekStart = useMemo(() => getWeekStart(wkOff), [wkOff]);
   const weekEnd   = useMemo(() => { const d = new Date(weekStart); d.setDate(weekStart.getDate() + 6); return d; }, [weekStart]);
   const todayStr  = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.toDateString(); }, []);
+  const mobileDayExternal = useMemo(() => eventsForDay(visibleExternalEvents,
+    new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + mobileDay)
+  ), [visibleExternalEvents, weekStart, mobileDay]);
 
   const currentWeekBlocks = useMemo(() =>
     blocks.filter(b => b.weekOffset === wkOff ||
@@ -807,7 +885,7 @@ export default function PagePlanning({ user }) {
     const startY = e.clientY, startDur = block.dur;
     let cur = startDur;
     function onMove(ev) {
-      const next = Math.max(0.5, Math.round((startDur + (ev.clientY - startY) / PX_H) * 2) / 2);
+      const next = Math.max(SLOT_H, snapToSlot(startDur + (ev.clientY - startY) / PX_H));
       if (next !== cur) { cur = next; setBlocks(prev => prev.map(b => b.id === block.id ? { ...b, dur: next } : b)); }
     }
     function onUp() {
@@ -879,6 +957,11 @@ export default function PagePlanning({ user }) {
           <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={() => setShowTemplates(true)}
             title={t('planning.templatesTitleShort')}
             style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.82rem' }}><ClipboardList size={15} strokeWidth={2} /></motion.button>
+          {isCalendarWorkerAvailable() && (
+          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={() => setShowCalendars(true)}
+            title={t('planning.calendarsButton')} aria-label={t('planning.calendarsButton')}
+            style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.82rem' }}><CalendarPlus size={15} strokeWidth={2} /></motion.button>
+          )}
           <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={printPlanning}
             title={t('planning.printTitle')}
             style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.82rem' }}><Printer size={15} strokeWidth={2} /></motion.button>
@@ -920,6 +1003,7 @@ export default function PagePlanning({ user }) {
       {/* ── Month view ── */}
       {view === 'month' ? (
         <MonthView blocks={blocks} subjects={subjects}
+          externalEvents={visibleExternalEvents} calendarColorOf={calendarColorOf}
           onAddBlock={day => {
             const dow = day.getDay();
             const mon = new Date(day); mon.setDate(day.getDate() - (dow === 0 ? 6 : dow - 1));
@@ -1008,12 +1092,13 @@ export default function PagePlanning({ user }) {
                       display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: mobileDay === 6 ? .4 : 1 }}>→</button>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '32px 1fr', overflowY: 'auto', maxHeight: '62vh' }}>
-                  <div style={{ borderRight: '1px solid var(--border)', background: 'var(--bg-card)' }}>
+                  <div style={{ position: 'relative', borderRight: '1px solid var(--border)', background: 'var(--bg-card)' }}>
                     {Array.from({ length: TOTAL_H }, (_, i) => (
                       <div key={i} style={{ height: PX_H, display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', paddingRight: 3, paddingTop: 2, borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
                         <span style={{ fontSize: '.5rem', color: 'var(--text-muted)' }}>{startH + i}{lang === 'fr' ? 'h' : ':00'}</span>
                       </div>
                     ))}
+                    <QuarterTicks hours={TOTAL_H} />
                   </div>
                   <div style={{ position: 'relative', height: GRID_H }} data-plan-day={mobileDay}>
                     {Array.from({ length: TOTAL_H }, (_, i) => (
@@ -1022,6 +1107,11 @@ export default function PagePlanning({ user }) {
                     {dragHover?.day === mobileDay && (
                       <div style={{ position: 'absolute', top: (dragHover.hour - startH) * PX_H, left: 2, right: 2, height: 2 * PX_H, background: 'rgba(74,144,217,.12)', border: '2px dashed rgba(74,144,217,.4)', borderRadius: 8, pointerEvents: 'none', zIndex: 1 }} />
                     )}
+                    <AllDayEventChips events={mobileDayExternal.allDay} colorOf={calendarColorOf} />
+                    {mobileDayExternal.timed.map(ev => (
+                      <ExternalEventBlock key={ev.key} event={ev} color={calendarColorOf(ev.calId)}
+                        startH={startH} endH={endH} pxPerHour={PX_H} />
+                    ))}
                     {currentWeekBlocks.filter(b => b.day === mobileDay).map(b => (
                       <CourseBlock key={b.id} block={b}
                         subject={subjects.find(s => s.id === b.subj)}
@@ -1137,6 +1227,7 @@ export default function PagePlanning({ user }) {
                       {startH + i}:00
                     </div>
                   ))}
+                  <QuarterTicks hours={TOTAL_H} />
                   <div style={{ height: GRID_H }} />
                 </div>
 
@@ -1150,6 +1241,7 @@ export default function PagePlanning({ user }) {
                     return sd.toDateString() === date.toDateString();
                   });
                   const dayBlocks = currentWeekBlocks.filter(b => b.day === dayIdx);
+                  const dayExternal = eventsForDay(visibleExternalEvents, date);
                   const timeNow = new Date();
                   const nowH = isToday ? timeNow.getHours() + timeNow.getMinutes() / 60 : null;
 
@@ -1190,6 +1282,13 @@ export default function PagePlanning({ user }) {
                         onMouseLeave={e => e.currentTarget.style.opacity = '0'}>
                       </div>
 
+                      {/* Imported calendar events (read-only, under user blocks) */}
+                      <AllDayEventChips events={dayExternal.allDay} colorOf={calendarColorOf} />
+                      {dayExternal.timed.map(ev => (
+                        <ExternalEventBlock key={ev.key} event={ev} color={calendarColorOf(ev.calId)}
+                          startH={startH} endH={endH} pxPerHour={PX_H} />
+                      ))}
+
                       {/* Blocks */}
                       {dayBlocks.map(b => (
                         <CourseBlock key={b.id} block={b}
@@ -1226,7 +1325,7 @@ export default function PagePlanning({ user }) {
                       <div style={{ width: '100%', height: 4, background: 'var(--border)', borderRadius: 10, overflow: 'hidden' }}>
                         <div style={{ width: `${pct * 100}%`, height: '100%', background: color, borderRadius: 10, transition: 'width .3s' }} />
                       </div>
-                      <span style={{ fontSize: '.68rem', fontWeight: 700, color }}>{load}h</span>
+                      <span style={{ fontSize: '.68rem', fontWeight: 700, color }}>{formatDuration(load, lang)}</span>
                     </div>
                   );
                 })}
@@ -1254,6 +1353,10 @@ export default function PagePlanning({ user }) {
           <TemplatesModal blocks={blocks} weekStart={weekStart} wkOff={wkOff}
             subjects={subjects} user={user}
             onApply={applyTemplate} onClose={() => setShowTemplates(false)} />
+        )}
+        {showCalendars && (
+          <CalendarsModal calendars={calendars} errors={calendarErrors} serviceDown={calendarServiceDown}
+            onSave={handleSaveCalendars} onClose={() => setShowCalendars(false)} />
         )}
       </AnimatePresence>
 

@@ -1,0 +1,57 @@
+# Cloudflare Worker config for Blokly (calendars, AI flashcards, shared documents).
+# Local run: `npm run dev` (wrangler dev) — nothing is deployed.
+# The name stays "blokly-calendar" so the future *.workers.dev URL does not move.
+
+name = "blokly-calendar"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+[vars]
+FIREBASE_PROJECT_ID = "bloklystudy-9a88f"
+# Browser origins allowed to call the worker (comma-separated).
+ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:4173,https://bastien-lp.github.io"
+# Workers AI model used for flashcard generation (swap for a cheaper one if the
+# free daily budget runs out too often — see README).
+AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+# Successful AI generations allowed per user and per UTC day.
+AI_DAILY_LIMIT = "5"
+# Shared synthesis documents (see src/docs.js). Sizes in MB.
+# The bucket's free tier is 10 GB. DOCS_GLOBAL_CAP_MB is the hard ceiling the
+# worker will never let the bucket pass: keep it well below 10240.
+DOCS_GLOBAL_CAP_MB = "8192"
+DOCS_USER_QUOTA_MB = "50"
+DOCS_MAX_FILE_MB = "10"
+DOCS_MAX_FILES_PER_USER = "200"
+DOCS_MAX_UPLOADS_PER_DAY = "40"
+# Public library: a document reported by this many different users is hidden
+# until an admin reviews it. ADMIN_UIDS may moderate (same list as src/lib/admin.js).
+LIBRARY_HIDE_AFTER_REPORTS = "3"
+ADMIN_UIDS = "VgHygV4pt5Qq7hL6yYQfXA0yql02"
+
+# Workers AI (free: 10,000 neurons/day, account-wide). Always runs on
+# Cloudflare, even under `wrangler dev`, so it needs `npx wrangler login`.
+[ai]
+binding = "AI"
+
+# R2 bucket holding the files. Create before deploying:
+#   npx wrangler r2 bucket create blokly-docs
+[[r2_buckets]]
+binding = "DOCS"
+bucket_name = "blokly-docs"
+
+# D1 database: document metadata + storage accounting. Create before deploying:
+#   npx wrangler d1 create blokly   (paste the id below)
+#   npx wrangler d1 migrations apply blokly --remote
+# Local: npx wrangler d1 migrations apply blokly --local
+[[d1_databases]]
+binding = "DB"
+database_name = "blokly"
+database_id = "b5be33c2-a6e5-44da-8119-75c13c0ef089"
+migrations_dir = "migrations"
+
+# Workers KV: per-user AI quota + last-known-good copies of .ics feeds.
+# Local dev simulates it. Before deploying, create it and paste its id:
+#   npx wrangler kv namespace create KV
+[[kv_namespaces]]
+binding = "KV"
+id = "2934f06711c54c0288ae8d3c8f8bd21d"

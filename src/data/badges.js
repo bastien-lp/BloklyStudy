@@ -10,9 +10,12 @@
  * namespace, keyed `<id>_name` and `<id>_desc`, so they are translated at
  * render time (see PageStats / UserProfileModal which call `t(...)`).
  *
- * ⚠️ Unlocking logic is server-side (Cloud Function). Adding an id here only
- * DISPLAYS the badge — the new id must also be wired into the awarding logic
- * for it to actually unlock.
+ * ⚠️ Adding an id here only DISPLAYS the badge — it must also be wired into
+ * an awarding path to unlock. Event badges are awarded server-side (Cloud
+ * Function); threshold badges are (re)checked client-side by
+ * src/lib/badgeAudit.js. The badges marked "client-audited" below exist ONLY
+ * there: they unlock live from stored data and grant no bonus XP (xp: 0), so
+ * they never move XP totals or the leaderboard.
  */
 export const BADGES = [
   // ── Onboarding ──
@@ -28,6 +31,9 @@ export const BADGES = [
   { id: 'exporter',       ico: '🖨️', xp: 200 },
   { id: 'challenge_week', ico: '🗡️', xp: 800 },
   { id: 'all_done',       ico: '🏆', xp: 2000 },
+  { id: 'blocks_done_25', ico: '🧱', xp: 0 },   // client-audited
+  { id: 'blocks_done_100', ico: '🏗️', xp: 0 },  // client-audited
+  { id: 'subjects_10',    ico: '🎒', xp: 0 },   // client-audited
 
   // ── Focus / Pomodoro ──
   { id: 'pomodoro',       ico: '🍅' },
@@ -47,12 +53,17 @@ export const BADGES = [
   { id: 'early_bird',     ico: '🌅', xp: 300 },
   { id: 'nuit_blanche',   ico: '🌙', xp: 500 },
   { id: 'matinal',        ico: '☀️', xp: 500 },
+  { id: 'focus_10h',      ico: '🌱', xp: 0 },   // client-audited
+  { id: 'focus_25h',      ico: '🌿', xp: 0 },   // client-audited
+  { id: 'focus_50h',      ico: '🌳', xp: 0 },   // client-audited
+  { id: 'all_rounder',    ico: '🎨', xp: 0 },   // client-audited
 
   // ── Streaks ──
   { id: 'streak3',        ico: '🔥' },
   { id: 'iron_regular',   ico: '🧲', xp: 500 },
   { id: 'streak7',        ico: '⚡', xp: 500 },
   { id: 'streak14',       ico: '💎', xp: 1000 },
+  { id: 'streak21',       ico: '🍂', xp: 0 },   // client-audited
   { id: 'en_feu',         ico: '🔥', xp: 1500 },
   { id: 'diamant',        ico: '💎', xp: 3000 },
   { id: 'streak60',       ico: '❄️', xp: 6000 },
@@ -65,6 +76,9 @@ export const BADGES = [
   { id: 'synth_totale',   ico: '📖', xp: 2000 },
   { id: 'conf4',          ico: '⭐' },
   { id: 'confiant',       ico: '⭐', xp: 600 },
+  { id: 'chapters_done_10', ico: '📗', xp: 0 }, // client-audited
+  { id: 'chapters_done_50', ico: '🏛️', xp: 0 }, // client-audited
+  { id: 'conf_stars_10',  ico: '✨', xp: 0 },   // client-audited
 
   // ── Flashcards ──
   { id: 'ten_cards',      ico: '🃏' },
@@ -73,6 +87,8 @@ export const BADGES = [
   { id: 'cards_250',      ico: '🗃️', xp: 2500 },
   { id: 'maitre_cartes',  ico: '🃏', xp: 400 },
   { id: 'polyglotte',     ico: '🌍', xp: 300 },
+  { id: 'mastered_50',    ico: '🧩', xp: 0 },   // client-audited
+  { id: 'mastered_200',   ico: '🗝️', xp: 0 },   // client-audited
 
   // ── Spaced repetition (Rév. J) ──
   { id: 'first_sr',       ico: '🔁' },
@@ -84,6 +100,7 @@ export const BADGES = [
   { id: 'journal_first',  ico: '📔' },
   { id: 'journal_10',     ico: '📓', xp: 300 },
   { id: 'journal_30',     ico: '📜', xp: 800 },
+  { id: 'journal_50',     ico: '🖋️', xp: 0 },   // client-audited
 
   // ── To-do ──
   { id: 'todo_first',     ico: '☑️' },
@@ -93,11 +110,16 @@ export const BADGES = [
   { id: 'first_exam',     ico: '📅' },
   { id: 'exam_ready',     ico: '🎓', xp: 800 },
   { id: 'exam_sprint',    ico: '⚔️', xp: 500 },
+  { id: 'exams_3',        ico: '📌', xp: 0 },   // client-audited
+  { id: 'grades_10',      ico: '📝', xp: 0 },   // client-audited
 
   // ── Levels / themes ──
   { id: 'level5',         ico: '🎮' },
   { id: 'level10',        ico: '🌊' },
   { id: 'level18',        ico: '🤖' },
+  { id: 'level25',        ico: '🦊', xp: 0 },   // client-audited
+  { id: 'level40',        ico: '🐺', xp: 0 },   // client-audited
+  { id: 'level70',        ico: '🐼', xp: 0 },   // client-audited
   { id: 'theme_foret',    ico: '🌲' },
   { id: 'theme_cyber',    ico: '🤖' },
   { id: 'theme_abyssal',  ico: '👁️' },
@@ -120,6 +142,7 @@ export const BADGES = [
   { id: 'xp_1000',        ico: '⚡', xp: 0 },
   { id: 'xp_5000',        ico: '💫', xp: 0 },
   { id: 'xp_10000',       ico: '🌟', xp: 0 },
+  { id: 'xp_25000',       ico: '🌠', xp: 0 },   // client-audited
   { id: 'xp_50000',       ico: '🏆', xp: 0 },
   { id: 'xp_100000',      ico: '👑', xp: 0 },
 ];

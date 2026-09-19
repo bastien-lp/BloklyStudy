@@ -76,7 +76,7 @@ function computeFocusSize() {
 /** Decimal hour (e.g. 9.5) → "9h30". */
 function fmtHour(h) {
   const hh = Math.floor(h);
-  const mm = h % 1 === 0.5 ? '30' : '00';
+  const mm = String(Math.round((h % 1) * 60)).padStart(2, '0');
   return `${hh}h${mm !== '00' ? mm : ''}`;
 }
 

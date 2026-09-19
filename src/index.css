@@ -61,6 +61,17 @@ input {
 .radius-sharp  .card, .radius-sharp  button, .radius-sharp  input, .radius-sharp  select { border-radius: var(--radius) !important; }
 .radius-bubbly .card, .radius-bubbly button, .radius-bubbly input, .radius-bubbly select { border-radius: var(--radius) !important; }
 
+/* ── NATIVE DROPDOWNS ──
+   A <select> inherits the theme's light text, but browsers draw its option
+   list with the system's white background: white on white. Give the list the
+   theme's opaque modal surface and text colour, for every select in the app
+   (the Planning page did this inline, option by option). */
+select option,
+select optgroup {
+  background-color: var(--bg-modal);
+  color: var(--text-primary);
+}
+
 /* ── BLOCK OPACITY ── */
 nav, [class*="nav"], [class*="sidebar"], [class*="panel"] { opacity: var(--block-opacity); }
 

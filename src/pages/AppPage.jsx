@@ -30,6 +30,8 @@ import { isDue } from '../data/repetition';
 import { GroupSessionEngine } from '../components/GroupSessionEngine';
 import { ChronoStack } from '../components/ChronoStack';
 import { reportSaveError } from '../lib/notify';
+import { resolveOwnPhoto } from '../lib/profilePhoto';
+import { startPresence, clearPresence } from '../lib/presence';
 import { isAdmin, ADMIN_UIDS } from '../lib/admin';
 import { auditBadges } from '../lib/badgeAudit';
 
@@ -418,6 +420,10 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
   const [unreadPrivate, setUnreadPrivate] = useState(0);  // number of DM convs with unread
 
   const [pseudo, setPseudo] = useState(user?.displayName || user?.email?.split('@')[0] || 'U');
+  // Top-bar avatar. Read from Firestore (see lib/profilePhoto.js), not Auth.
+  const [myPhoto, setMyPhoto] = useState(user?.photoURL || null);
+  // "Show me online" privacy switch (profile.privacy.online, default on).
+  const [showOnline, setShowOnline] = useState(true);
   const [showAddSubject, setShowAddSubject] = useState(false);
   const [showThemeEditor, setShowThemeEditor] = useState(false);
   const [subjects, setSubjects] = useState([]);
@@ -450,6 +456,12 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
     });
     return unsub;
   }, [user]);
+
+  // Publish my own presence (see lib/presence.js) unless I opted out.
+  useEffect(() => {
+    if (!user || !showOnline) return undefined;
+    return startPresence(user.uid);
+  }, [user, showOnline]);
 
   // Presence.
   useEffect(() => {
@@ -539,6 +551,8 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
         if (d.level !== undefined) setLevel(d.level);
         setSubjects(d.subjects || []);
         if (d.profile?.pseudo) setPseudo(d.profile.pseudo);
+        setMyPhoto(resolveOwnPhoto(d, user));
+        setShowOnline(d.profile?.privacy?.online !== false);
 
         // Badges added to the catalogue after a threshold was already passed
         // are never re-checked by the Cloud Function, so they stayed locked.
@@ -546,6 +560,9 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
         if (!badgeAuditRef.current) {
           badgeAuditRef.current = true;
           auditBadges(user.uid, d);
+        } else {
+          // Client-only badges unlock live (see lib/badgeAudit.js). Writes only when one is due.
+          auditBadges(user.uid, d, { liveOnly: true });
         }
       }
     });
@@ -717,15 +734,15 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
               border: activeTab === 'profile' ? '2px solid var(--accent)' : '1px solid rgba(255,255,255,.15)',
               boxShadow: activeTab === 'profile' ? '0 0 10px var(--accent-glow)' : 'none',
               flexShrink: 0, transition: 'border .2s, box-shadow .2s' }}>
-            {user?.photoURL ? (
-              <img src={user.photoURL} alt="avatar" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+            {myPhoto ? (
+              <img src={myPhoto} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
             ) : (
               pseudo[0].toUpperCase()
             )}
           </motion.div>
 
           {/* Logout */}
-          <motion.button onClick={() => signOut(auth)}
+          <motion.button onClick={async () => { await clearPresence(user.uid); signOut(auth); }}
             whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} title={t('app.logout')}
             style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 8,
               color: 'var(--text-muted)', fontSize: '0.72rem', cursor: 'pointer', padding: '4px 8px',

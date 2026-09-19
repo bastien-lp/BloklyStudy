@@ -27,7 +27,7 @@ import { reportSaveError } from '../lib/notify';
 
 /** Hours (e.g. 9.5) → "9h30". */
 function hm(h) {
-  const hh = Math.floor(h), mm = h % 1 === 0.5 ? '30' : '00';
+  const hh = Math.floor(h), mm = String(Math.round((h % 1) * 60)).padStart(2, '0');
   return `${hh}h${mm}`;
 }
 
