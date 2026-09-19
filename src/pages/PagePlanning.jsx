@@ -21,11 +21,13 @@ import MonthView from '../components/MonthView';
 import { GuidedTour, useGuidedTour, TourButton } from '../components/GuidedTour';
 import {
   Plus, Pencil, BookOpen, Target, CheckSquare, Square, ArrowDown, Trash2,
-  ClipboardList, Save, MapPin, Printer, Settings, GraduationCap, Check, RotateCcw, Undo2, Redo2,
+  ClipboardList, Save, MapPin, Printer, Settings, GraduationCap, Check, RotateCcw, Undo2, Redo2, Wand2,
   CalendarPlus,
 } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatDuration } from '../lib/duration';
+import { pendingAutoBlocks } from '../lib/autoPlan';
+import AutoPlanModal from '../components/AutoPlanModal';
 import { reportSaveError } from '../lib/notify';
 import { CalendarsModal, ExternalEventBlock, AllDayEventChips } from '../components/ExternalCalendars';
 import {
@@ -662,6 +664,7 @@ export default function PagePlanning({ user }) {
   const [editBlock, setEditBlock]       = useState(null);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showCalendars, setShowCalendars] = useState(false);
+  const [showAutoPlan, setShowAutoPlan]   = useState(false);
 
   // Imported (.ics) calendars — read-only overlay, never merged into `blocks`.
   const [calendars, setCalendars]           = useState([]);
@@ -814,6 +817,23 @@ export default function PagePlanning({ user }) {
     setBlocks(updated); save(updated);
   }
 
+  // Automatic revision plan (lib/autoPlan.js). Both actions are undoable.
+  function applyAutoPlan(planBlocks, replaceExisting) {
+    pushUndo();
+    const drop = new Set(replaceExisting ? pendingAutoBlocks(blocks) : []);
+    const kept = blocks.filter(b => !drop.has(b));
+    const added = planBlocks.map(b => ({ ...b, id: nidRef.current++ }));
+    const updated = [...kept, ...added];
+    setBlocks(updated); save(updated);
+  }
+
+  function removeAutoPlan() {
+    pushUndo();
+    const drop = new Set(pendingAutoBlocks(blocks));
+    const updated = blocks.filter(b => !drop.has(b));
+    setBlocks(updated); save(updated);
+  }
+
   function updateBlock(b) {
     pushUndo();
     const targetDate = new Date(weekStart); targetDate.setDate(weekStart.getDate() + b.day);
@@ -954,6 +974,9 @@ export default function PagePlanning({ user }) {
           <motion.button aria-label={t('a11y.redo')} whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={redo}
             disabled={!redoStack.current.length} title={t('planning.redoTitle')}
             style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.85rem', opacity: redoStack.current.length ? 1 : .4 }}><Redo2 size={15} strokeWidth={2} /></motion.button>
+          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={() => setShowAutoPlan(true)}
+            title={t('autoPlan.title')} aria-label={t('autoPlan.title')}
+            style={{ height: 30, padding: '0 10px', borderRadius: 8, border: '1px solid var(--accent)', background: 'var(--accent-subtle)', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: '.74rem', fontWeight: 700 }}><Wand2 size={15} strokeWidth={2} /><span className="hide-mobile">{t('autoPlan.button')}</span></motion.button>
           <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={() => setShowTemplates(true)}
             title={t('planning.templatesTitleShort')}
             style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.82rem' }}><ClipboardList size={15} strokeWidth={2} /></motion.button>
@@ -1353,6 +1376,10 @@ export default function PagePlanning({ user }) {
           <TemplatesModal blocks={blocks} weekStart={weekStart} wkOff={wkOff}
             subjects={subjects} user={user}
             onApply={applyTemplate} onClose={() => setShowTemplates(false)} />
+        )}
+        {showAutoPlan && (
+          <AutoPlanModal subjects={subjects} blocks={blocks} events={visibleExternalEvents}
+            onApply={applyAutoPlan} onRemove={removeAutoPlan} onClose={() => setShowAutoPlan(false)} />
         )}
         {showCalendars && (
           <CalendarsModal calendars={calendars} errors={calendarErrors} serviceDown={calendarServiceDown}
