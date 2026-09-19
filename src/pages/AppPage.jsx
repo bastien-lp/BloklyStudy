@@ -34,6 +34,7 @@ import { resolveOwnPhoto } from '../lib/profilePhoto';
 import { startPresence, clearPresence } from '../lib/presence';
 import { isAdmin, ADMIN_UIDS } from '../lib/admin';
 import { auditBadges } from '../lib/badgeAudit';
+import InstallPrompt from '../components/InstallPrompt';
 
 // Each tab is a separate chunk, loaded the first time it is opened. This keeps
 // the initial authenticated bundle small — a user who never opens Stats or the
@@ -979,6 +980,7 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
       {/* Headless: keeps a joined group session counting (and accruing focus
           time) even while the Groups tab is unmounted. */}
       <GroupSessionEngine user={user} />
+      <InstallPrompt />
 
       <style>{`
         ::-webkit-scrollbar { display:none; }
