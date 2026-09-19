@@ -241,12 +241,12 @@ export function cleanName(raw, ext) {
   return name.slice(0, MAX_NAME_LENGTH - suffix.length) + suffix;
 }
 
-function cleanSubjectId(raw) {
+export function cleanSubjectId(raw) {
   const s = raw == null ? '' : String(raw).trim();
   return s && s.length <= 64 ? s : null;
 }
 
-function cleanChapterIdx(raw) {
+export function cleanChapterIdx(raw) {
   if (raw === null || raw === undefined || raw === '') return null;
   const n = Number(raw);
   return Number.isInteger(n) && n >= 0 && n < 1000 ? n : null;
@@ -268,7 +268,7 @@ async function isGroupMember(env, idToken, groupId, uid) {
 }
 
 /** Owner, or member of at least one group the document is shared with. */
-async function canRead(env, idToken, row, uid) {
+export async function canRead(env, idToken, row, uid) {
   if (row.owner_uid === uid) return true;
   // Published in the public library: readable unless hidden by moderation
   // (admins can still open hidden ones to review them).
@@ -419,6 +419,7 @@ async function deleteDoc({ env, uid, params: [id] }) {
   await env.DB.batch([
     env.DB.prepare('DELETE FROM group_shares WHERE doc_id = ?').bind(id),
     ...unpublishStatements(env, id),
+    env.DB.prepare('DELETE FROM doc_annotations WHERE doc_id = ?').bind(id),
     env.DB.prepare('DELETE FROM documents WHERE id = ?').bind(id),
   ]);
   return ok({ deleted: id, usage: await readUsage(env, uid) });

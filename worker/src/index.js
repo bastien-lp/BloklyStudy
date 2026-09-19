@@ -9,6 +9,7 @@
  *   /docs…, /groups/:id/docs  shared synthesis documents, R2 + D1 (see docs.js)
  *   /library…, /docs/:id/library  public synthesis library (see library.js)
  *   /library/:id/comments|rating, /library/follows  comments, ratings, followed schools (libraryCommunity.js)
+ *   /docs/:id/annotations, /annotations…  private PDF highlights and notes (annotations.js)
  *
  * ── GET /events ──
  *
@@ -42,6 +43,7 @@ import { generateFlashcards } from './ai.js';
 import { docRoutes } from './docs.js';
 import { libraryRoutes } from './library.js';
 import { communityRoutes } from './libraryCommunity.js';
+import { annotationRoutes } from './annotations.js';
 
 // ── Limits ──
 const MAX_CALENDARS       = 10;
@@ -100,6 +102,7 @@ const ROUTES = [
   ...docRoutes,
   ...libraryRoutes,
   ...communityRoutes,
+  ...annotationRoutes,
 ];
 
 function matchRoute(method, pathname) {
