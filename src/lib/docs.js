@@ -93,6 +93,15 @@ export const saveLibraryDoc = (user, id, saved) => api(user, 'POST', `/library/$
 export const reportLibraryDoc = (user, id, reason) => api(user, 'POST', `/library/${id}/report`, { reason });
 export const moderateLibraryDoc = (user, id, action) => api(user, 'POST', `/library/${id}/moderate`, { action });
 
+// ── PDF highlights & notes (see worker/src/annotations.js) ──
+export const listAnnotations = (user, docId) => api(user, 'GET', `/docs/${docId}/annotations`);
+export const createAnnotation = (user, docId, data) => api(user, 'POST', `/docs/${docId}/annotations`, data);
+export const updateAnnotation = (user, id, changes) => api(user, 'PATCH', `/annotations/${id}`, changes);
+export const deleteAnnotation = (user, id) => api(user, 'DELETE', `/annotations/${id}`);
+export const listChapterAnnotations = (user, subjectId, chapterIdx) =>
+  api(user, 'GET', `/annotations?subjectId=${encodeURIComponent(subjectId)}&chapterIdx=${chapterIdx}`);
+export const annotationSummary = user => api(user, 'GET', '/annotations/summary');
+
 // ── Library community (see worker/src/libraryCommunity.js) ──
 export const listLibraryComments = (user, id) => api(user, 'GET', `/library/${id}/comments`);
 export const addLibraryComment = (user, id, body, pseudo) => api(user, 'POST', `/library/${id}/comments`, { body, pseudo });

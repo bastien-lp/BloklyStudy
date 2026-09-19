@@ -41,6 +41,10 @@ export const LEVEL_FROM_PROFILE_YEAR = {
   '1ère': 'y1', '2ème': 'y2', '3ème': 'y3', 'Master 1': 'master', 'Master 2': 'master', Doctorat: 'phd', Autre: 'other',
 };
 
+/** Highlight colours for PDF annotations (CSS classes in pdfTextLayer.css) and their swatches. */
+export const HIGHLIGHT_COLORS = ['yellow', 'green', 'pink', 'blue'];
+export const HIGHLIGHT_SWATCH = { yellow: '#FFD60A', green: '#50C878', pink: '#FF69B4', blue: '#50A0FF' };
+
 /** A stable, warm tint per subject name, so "Chimie" always looks the same. */
 const SUBJECT_TINTS = ['#C4553A', '#2E8B57', '#3A6EA5', '#8C6D46', '#B8860B', '#6B7F3A', '#9C4F7A', '#3F8E8C'];
 export function subjectTint(name = '') {

@@ -6,12 +6,19 @@
  * browsers cannot render — get a download card. Keyboard: ← → to move,
  * Esc to close. `actions(doc)` lets the caller add buttons (share, delete…).
  *
- * Props: { user, docs, index, onIndexChange, onClose, actions? }
+ * PDFs can be highlighted and annotated (private to the reader): the notes
+ * panel lists them, links new ones to a chapter, and jumps to their page.
+ *
+ * Props: { user, docs, index, onIndexChange, onClose, actions?, initialPage? }
  */
 
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, ChevronRight, Download, ExternalLink, X, ZoomIn, ZoomOut, AlertTriangle, Sparkles } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, ExternalLink, X, ZoomIn, ZoomOut, AlertTriangle, Sparkles, StickyNote } from 'lucide-react';
+import { doc as fsDoc, getDoc } from 'firebase/firestore';
+import { db } from '../../firebase/config';
+import { useAnnotations } from '../../hooks/useAnnotations';
+import AnnotationsPanel from './AnnotationsPanel';
 import { useTranslation } from '../../i18n';
 import { getDocObjectUrl, formatBytes } from '../../lib/docs';
 import { isAiFlashcardsAvailable } from '../../lib/aiFlashcards';
@@ -29,14 +36,45 @@ const iconBtn = {
   background: 'var(--bg-card-hover)', color: 'var(--text-secondary)',
 };
 
-export default function DocViewer({ user, docs, index, onIndexChange, onClose, actions }) {
+export default function DocViewer({ user, docs, index, onIndexChange, onClose, actions, initialPage }) {
   const { t, formatNumber, formatDate } = useTranslation();
   const doc = docs[index];
   const [state, setState] = useState({ id: null, url: null, text: null, error: null });
   const [zoomed, setZoomed] = useState(false);
   const [pdfFailed, setPdfFailed] = useState(null); // id of a PDF PDF.js could not read
   const [cardsFor, setCardsFor] = useState(null);   // id of the PDF being turned into flashcards
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [jump, setJump] = useState(() => (initialPage ? { page: initialPage, nonce: 1 } : null));
+  const [subjects, setSubjects] = useState(null);   // my subjects, loaded when the notes panel first opens
+  const [narrow, setNarrow] = useState(() => window.innerWidth < 760);
+  const ann = useAnnotations(user, doc);
   const loaded = state.id === doc?.id;
+
+  useEffect(() => {
+    const onResize = () => setNarrow(window.innerWidth < 760);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  function openNotes() {
+    setNotesOpen(true);
+    if (subjects === null) {
+      setSubjects([]);
+      getDoc(fsDoc(db, 'users', user.uid, 'data', 'main'))
+        .then(snap => setSubjects(snap.data()?.subjects || []))
+        .catch(() => {});
+    }
+  }
+
+  async function onCreateAnnotation(selection, { color, withNote }) {
+    const saved = await ann.create(selection, { color });
+    if (saved && withNote) { openNotes(); ann.setActiveId(saved.id); }
+  }
+
+  function goToAnnotation(a) {
+    ann.setActiveId(a.id);
+    setJump({ page: a.page, nonce: Date.now() });
+  }
 
   // Load the current file (object URL; the text itself for text files).
   useEffect(() => {
@@ -54,6 +92,8 @@ export default function DocViewer({ user, docs, index, onIndexChange, onClose, a
   useEffect(() => {
     function onKey(e) {
       if (cardsFor) return; // the flashcards dialog on top handles its own keys
+      // Typing in a note or a field must not flip documents.
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
       if (e.key === 'Escape') onClose();
       else if (e.key === 'ArrowLeft' && index > 0) { setZoomed(false); onIndexChange(index - 1); }
       else if (e.key === 'ArrowRight' && index < docs.length - 1) { setZoomed(false); onIndexChange(index + 1); }
@@ -89,7 +129,9 @@ export default function DocViewer({ user, docs, index, onIndexChange, onClose, a
       }
       return (
         <Suspense fallback={<div style={{ color: 'var(--text-muted)', fontSize: '.82rem' }}>{t('common.loading')}</div>}>
-          <PdfPages key={doc.id} url={state.url} name={doc.name} onFail={() => setPdfFailed(doc.id)} />
+          <PdfPages key={doc.id} url={state.url} name={doc.name} onFail={() => setPdfFailed(doc.id)}
+            annotations={ann.list} activeId={ann.activeId} jumpTo={jump}
+            onCreate={onCreateAnnotation} onOpenAnnotation={a => { openNotes(); ann.setActiveId(a.id); }} />
         </Suspense>
       );
     }
@@ -150,6 +192,14 @@ export default function DocViewer({ user, docs, index, onIndexChange, onClose, a
           </div>
         </div>
         {actions && actions(doc)}
+        {doc.kind === 'pdf' && loaded && !state.error && pdfFailed !== doc.id && (
+          <button style={{ ...iconBtn, width: 'auto', padding: '0 12px', gap: 6, borderRadius: 99, fontSize: '.74rem', fontWeight: 700,
+            ...(notesOpen ? { background: 'var(--accent-subtle)', color: 'var(--text-primary)' } : {}) }}
+            onClick={() => (notesOpen ? setNotesOpen(false) : openNotes())} aria-pressed={notesOpen}
+            aria-label={t('notes.toggle', { count: ann.list.length })} title={t('notes.toggle', { count: ann.list.length })}>
+            <StickyNote size={15} aria-hidden="true" /><span>{ann.list.length}</span>
+          </button>
+        )}
         {doc.kind === 'pdf' && loaded && !state.error && isAiFlashcardsAvailable() && (
           <button style={{ ...iconBtn, width: 'auto', padding: '0 12px', gap: 6, borderRadius: 99, fontSize: '.74rem', fontWeight: 700 }}
             onClick={() => setCardsFor(doc.id)} aria-label={t('pdfCards.open')} title={t('pdfCards.open')}>
@@ -183,6 +233,7 @@ export default function DocViewer({ user, docs, index, onIndexChange, onClose, a
             <ChevronLeft size={20} />
           </button>
         )}
+        <div style={{ flex: 1, height: '100%', minWidth: 0, display: 'flex', gap: 10, position: 'relative' }}>
         <AnimatePresence mode="wait">
           <motion.div key={doc.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
             transition={{ duration: .2, ease: 'easeOut' }}
@@ -190,6 +241,11 @@ export default function DocViewer({ user, docs, index, onIndexChange, onClose, a
             {renderBody()}
           </motion.div>
         </AnimatePresence>
+        {notesOpen && doc.kind === 'pdf' && loaded && !state.error && (
+          <AnnotationsPanel ann={ann} subjects={subjects || []} narrow={narrow}
+            onGoTo={goToAnnotation} onClose={() => setNotesOpen(false)} />
+        )}
+        </div>
         {docs.length > 1 && (
           <button style={{ ...iconBtn, visibility: index < docs.length - 1 ? 'visible' : 'hidden' }} onClick={() => go(index + 1)} aria-label={t('docs.next')}>
             <ChevronRight size={20} />

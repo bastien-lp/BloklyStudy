@@ -26,9 +26,11 @@ import { db } from '../firebase/config';
 import { useTranslation } from '../i18n';
 import { GuidedTour, useGuidedTour, TourButton } from '../components/GuidedTour';
 import { reportSaveError } from '../lib/notify';
-import { ListChecks, FolderOpen, Paperclip, Library } from 'lucide-react';
+import { ListChecks, FolderOpen, Paperclip, Library, StickyNote } from 'lucide-react';
 import { useDocs } from '../hooks/useDocs';
 import DocLibrary from '../components/docs/DocLibrary';
+import ChapterNotesModal from '../components/docs/ChapterNotesModal';
+import { annotationSummary } from '../lib/docs';
 import LibraryBrowser from '../components/docs/LibraryBrowser';
 
 const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
@@ -73,7 +75,7 @@ function StatusToggle({ current, onChange }) {
 }
 
 // ── Single chapter row ───────────────────────────────────────────────────────
-function ChapterRow({ chap, idx, onSetStatus, onEditName, onEditNote, docCount = 0, onOpenDocs, onDropFiles }) {
+function ChapterRow({ chap, idx, onSetStatus, onEditName, onEditNote, docCount = 0, onOpenDocs, onDropFiles, noteCount = 0, onOpenNotes }) {
   const { t } = useTranslation();
   const [fileOver, setFileOver] = useState(false);
   const [showNote, setShowNote] = useState(!!chap.note);
@@ -116,6 +118,14 @@ function ChapterRow({ chap, idx, onSetStatus, onEditName, onEditNote, docCount =
             <Paperclip size={12} aria-hidden="true" />{docCount > 0 && docCount}
           </button>
         )}
+        {onOpenNotes && noteCount > 0 && (
+          <button onClick={() => onOpenNotes(idx)}
+            aria-label={t('notes.chapterNotes', { count: noteCount })} title={t('notes.chapterNotes', { count: noteCount })}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 7, flexShrink: 0, cursor: 'pointer',
+              border: 'none', fontSize: '.65rem', fontWeight: 700, background: 'var(--accent-subtle)', color: 'var(--accent)' }}>
+            <StickyNote size={12} aria-hidden="true" />{noteCount}
+          </button>
+        )}
         <button onClick={() => setShowNote(n => !n)}
           style={{ padding: '4px 8px', borderRadius: 7, border: `1px solid ${chap.note ? 'rgba(74,144,217,.3)' : 'rgba(255,255,255,.08)'}`,
             background: chap.note ? 'rgba(74,144,217,.08)' : 'transparent',
@@ -153,7 +163,7 @@ function ChapterRow({ chap, idx, onSetStatus, onEditName, onEditNote, docCount =
 }
 
 // ── Subject card (collapsible, with its chapters) ────────────────────────────
-function SubjectCard({ subject, filter, onUpdate, index, docCounts, onOpenDocs, onDropFiles }) {
+function SubjectCard({ subject, filter, onUpdate, index, docCounts, onOpenDocs, onDropFiles, noteCounts, onOpenNotes }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [editingChap, setEditingChap] = useState(null);
@@ -258,6 +268,8 @@ function SubjectCard({ subject, filter, onUpdate, index, docCounts, onOpenDocs, 
                   <ChapterRow key={realIdx} chap={chap} idx={realIdx}
                     docCount={docCounts?.[`${subject.id}_${realIdx}`] || 0}
                     onOpenDocs={onOpenDocs && (i => onOpenDocs(subject.id, i))}
+                    noteCount={noteCounts?.[`${subject.id}_${realIdx}`] || 0}
+                    onOpenNotes={onOpenNotes && (i => onOpenNotes(subject, i))}
                     onDropFiles={onDropFiles && (files => onDropFiles(subject.id, realIdx, files))}
                     onSetStatus={handleSetStatus}
                     onEditName={idx => { setEditingChap(idx); setEditName(chapters[idx]?.name || ''); }}
@@ -291,6 +303,23 @@ export default function PageSyntheses({ user }) {
   const [profile, setProfile]   = useState(null);       // main.profile (school, year) for the library
   const [docFocus, setDocFocus] = useState(null);       // { subjectId, chapterIdx } | null
   const docs = useDocs(user);
+  const [noteCounts, setNoteCounts] = useState({});  // "subjectId_chapterIdx" → highlights & notes linked there
+  const [notesFor, setNotesFor] = useState(null);    // { subject, chapterIdx } whose notes are open
+
+  // Chapter note badges; refreshed whenever the notes dialog closes.
+  useEffect(() => {
+    if (!docs.available || !user || notesFor) return undefined;
+    let alive = true;
+    annotationSummary(user)
+      .then(({ counts }) => {
+        if (!alive) return;
+        const map = {};
+        counts.forEach(c => { map[`${c.subjectId}_${c.chapterIdx}`] = c.count; });
+        setNoteCounts(map);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [docs.available, user, notesFor]);
 
   // "subjectId_chapterIdx" → number of attached documents (chapter badges).
   const docCounts = useMemo(() => {
@@ -465,12 +494,22 @@ export default function PageSyntheses({ user }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {subjects.map((s, i) => (
             <SubjectCard key={s.id} subject={s} filter={filter} onUpdate={handleUpdate} index={i}
-              {...(docs.available ? { docCounts, onOpenDocs: openChapterDocs, onDropFiles: dropOnChapter } : {})} />
+              {...(docs.available ? {
+                docCounts, onOpenDocs: openChapterDocs, onDropFiles: dropOnChapter,
+                noteCounts, onOpenNotes: (subject, chapterIdx) => setNotesFor({ subject, chapterIdx }),
+              } : {})} />
           ))}
         </div>
       )}
       </div>
       </>)}
+
+      <AnimatePresence>
+        {notesFor && (
+          <ChapterNotesModal user={user} subject={notesFor.subject} chapterIdx={notesFor.chapterIdx}
+            onClose={() => setNotesFor(null)} />
+        )}
+      </AnimatePresence>
 
       <GuidedTour active={tour.active} step={tour.step} steps={tour.steps}
         onNext={tour.next} onPrev={tour.prev} onStop={tour.stop} />

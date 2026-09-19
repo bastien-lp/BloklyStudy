@@ -15,6 +15,7 @@ const KEYS = {
   own_comment: 'library.errOwn',
   comment_too_short: 'libraryTalk.errShort',
   too_many_follows: 'libraryTalk.errTooManyFollows',
+  too_many_annotations: 'notes.errTooMany',
 };
 
 export const docErrorKey = code => KEYS[code] || 'docs.errGeneric';
