@@ -99,7 +99,7 @@ export default function WeeklyRecap({ data }) {
           </div>
         </div>
 
-        <div role="img" aria-label={t('recap.chartLabel')}>
+        <div role="group" aria-label={t('recap.chartLabel')}>
           <div style={{ position: 'relative', height: CHART_H, display: 'flex', alignItems: 'flex-end', gap: 2, borderBottom: '1px solid var(--border)' }}>
             {recap.perDay.map((mins, i) => {
               const day = new Date(weekStart.getTime() + i * DAY_MS);
