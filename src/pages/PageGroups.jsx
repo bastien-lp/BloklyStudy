@@ -14,7 +14,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, rtdb } from '../firebase/config';
 import { ref as dbRef, onValue, set, remove, onDisconnect } from 'firebase/database';
-import { Square, FolderOpen } from 'lucide-react';
+import { Square, FolderOpen, Trophy } from 'lucide-react';
 import UserProfileModal from '../components/UserProfileModal';
 import {
   collection, doc, getDoc, getDocs, setDoc, deleteDoc, addDoc,
@@ -39,6 +39,9 @@ import { isDocsAvailable, shareDocToGroup } from '../lib/docs';
 import { docMessageSummary } from '../lib/groupDocMessage';
 import { DocBubble, GroupDocsPanel, GroupDocPicker } from '../components/docs/GroupDocs';
 import DocViewer from '../components/docs/DocViewer';
+import QuizSetupModal from '../components/quiz/QuizSetupModal';
+import LiveQuiz from '../components/quiz/LiveQuiz';
+import { subscribeQuiz, isQuizStale } from '../lib/groupQuiz';
 
 function generateCode() {
   return 'BLK-' + Math.random().toString(36).slice(2, 6).toUpperCase();
@@ -98,6 +101,7 @@ function messagePreview(msg, t) {
   if (msg.type === 'sessionEnd') return t('groups.sessionEndedPreview');
   if (msg.type === 'deck')      return t('groups.deckPreview');
   if (msg.type === 'doc')       return t('docs.bubblePreview', { name: msg.doc?.name || '' });
+  if (msg.type === 'quiz')      return t('quiz.bubblePreview', { title: msg.text || '' });
   if (msg.type === 'flashcard') return `🃏 ${msg.question || t('groups.flashcard')}`;
   if (msg.type === 'link')      return `🔗 ${msg.title || msg.url || t('groups.link')}`;
   return msg.text || '';
@@ -119,7 +123,7 @@ function renderMessageText(text, memberNames) {
 }
 
 function MessageBubble({ msg, isMe, showAvatar, showTime, onReact, onDelete, onViewUser, onVote, onSaveCard, onJoinFocus, myUid,
-                        onReply, onEdit, onPin, onJumpTo, memberNames, mentionsMe, user, onOpenDoc }) {
+                        onReply, onEdit, onPin, onJumpTo, memberNames, mentionsMe, user, onOpenDoc, onOpenQuiz }) {
   const { t, formatDate } = useTranslation();
   const [showReactions, setShowReactions] = useState(false);
   const longPressRef = useRef(null);
@@ -231,7 +235,7 @@ function MessageBubble({ msg, isMe, showAvatar, showTime, onReact, onDelete, onV
             // Rich cards (poll/focus/flashcard) keep a neutral surface so their
             // inner content stays legible; only plain text uses the accent tint.
             const isRich = msg.type === 'poll' || msg.type === 'focus' || msg.type === 'flashcard'
-              || msg.type === 'deck' || msg.type === 'link' || msg.type === 'doc';
+              || msg.type === 'deck' || msg.type === 'link' || msg.type === 'doc' || msg.type === 'quiz';
             const bubbleBg = isRich ? 'var(--bg-card)' : isMe ? 'var(--accent)' : 'var(--bg-card-hover)';
             const bubbleColor = isRich ? 'var(--text-primary)' : isMe ? 'var(--on-accent, #fff)' : 'var(--text-primary)';
             return (
@@ -262,6 +266,8 @@ function MessageBubble({ msg, isMe, showAvatar, showTime, onReact, onDelete, onV
                   <LinkBubble msg={msg} />
                 ) : msg.type === 'doc' ? (
                   <DocBubble user={user} msg={msg} onOpen={onOpenDoc} />
+                ) : msg.type === 'quiz' ? (
+                  <QuizBubble msg={msg} onOpen={onOpenQuiz} />
                 ) : (
                   <span>{renderMessageText(msg.text, memberNames)}{msg.editedAt && <span style={{ fontSize: '.6rem', opacity: .6, marginLeft: 5 }}>({t('groups.edited')})</span>}</span>
                 )}
@@ -367,6 +373,32 @@ function FlashcardBubble({ msg, onSave }) {
           background: 'var(--bg-card)', color: 'var(--text-secondary)', fontSize: '.7rem', fontWeight: 700 }}>
         💾 {t('groups.saveCard')}
       </button>
+    </div>
+  );
+}
+
+// A live quiz announcement: opens (and lets you join) the group's quiz.
+function QuizBubble({ msg, onOpen }) {
+  const { t } = useTranslation();
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ width: 32, height: 32, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'var(--accent-subtle)', color: 'var(--accent)', flexShrink: 0 }}>
+          <Trophy size={16} aria-hidden="true" />
+        </span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: '.75rem', fontWeight: 700 }}>{t('quiz.bubbleTitle')}</div>
+          <div style={{ fontSize: '.7rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{msg.text}</div>
+        </div>
+      </div>
+      {onOpen && (
+        <button onClick={() => onOpen(msg)}
+          style={{ alignSelf: 'flex-start', padding: '6px 14px', borderRadius: 9, border: 'none', cursor: 'pointer',
+            background: 'var(--accent)', color: 'var(--on-accent, #fff)', fontSize: '.74rem', fontWeight: 700 }}>
+          {t('quiz.open')}
+        </button>
+      )}
     </div>
   );
 }
@@ -714,6 +746,9 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
   const [showDocPicker, setShowDocPicker] = useState(false); // share-a-document composer
   const [showGroupDocs, setShowGroupDocs] = useState(false); // the group's shared library
   const [openDocMsg, setOpenDocMsg]       = useState(null);  // a doc message opened in the viewer
+  const [showQuizSetup, setShowQuizSetup] = useState(false); // live quiz: choose a deck
+  const [showQuiz, setShowQuiz]           = useState(false); // live quiz: full-screen game
+  const [quizLive, setQuizLive]           = useState(null);  // the group's running quiz (null if none / over)
   const docsEnabled = isDocsAvailable();
   const [msgLimit, setMsgLimit]   = useState(40);   // pagination window (latest N)
   const [hasMore, setHasMore]     = useState(false);// whether older messages exist
@@ -794,6 +829,19 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
     });
     return () => { remove(presRef); unsub(); };
   }, [group.id]);
+
+  // The group's live quiz (banner + "join"). Re-checked every few seconds so the
+  // banner disappears on its own once the quiz is over.
+  useEffect(() => {
+    let current = null;
+    const unsub = subscribeQuiz(group.id, q => { current = q; setQuizLive(q && !isQuizStale(q) ? q : null); });
+    const id = setInterval(() => setQuizLive(current && !isQuizStale(current) ? current : null), 5000);
+    return () => { unsub(); clearInterval(id); };
+  }, [group.id]);
+
+  function openQuizTool() {
+    if (quizLive) setShowQuiz(true); else setShowQuizSetup(true);
+  }
 
   // Watch this group's live session. Everyone in the room subscribes, joined or
   // not, so a session someone else started shows up immediately.
@@ -1195,6 +1243,17 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
 
       {/* Live session — sticky above the conversation while one is running */}
       <AnimatePresence>
+        {quizLive && (
+          <button type="button" onClick={() => setShowQuiz(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 14px', border: 'none', cursor: 'pointer',
+              background: 'var(--accent-subtle)', color: 'var(--text-primary)', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
+            <Trophy size={16} color="var(--accent)" aria-hidden="true" />
+            <span style={{ flex: 1, minWidth: 0, fontSize: '.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <strong>{t('quiz.banner')}</strong> · {quizLive.title}
+            </span>
+            <span style={{ fontSize: '.74rem', fontWeight: 800, color: 'var(--accent)' }}>{t('quiz.open')}</span>
+          </button>
+        )}
         {sessionVisible && (
           <GroupSessionBar
             session={liveSession}
@@ -1273,7 +1332,7 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
                 myUid={user.uid} onVote={handleVote} onJoinFocus={handleJoinFocus} onSaveCard={handleSaveCard}
                 onReply={startReply} onEdit={startEdit} onPin={pinMessage} onJumpTo={jumpTo}
                 memberNames={memberNames} mentionsMe={Array.isArray(m.mentions) && m.mentions.includes(user.uid)}
-                user={user} onOpenDoc={docsEnabled ? setOpenDocMsg : undefined} />
+                user={user} onOpenDoc={docsEnabled ? setOpenDocMsg : undefined} onOpenQuiz={() => setShowQuiz(true)} />
               )}
             </div>
           );
@@ -1303,6 +1362,7 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
                 { icon: '🃏', label: t('groups.flashcard'), action: () => { setShowCardShare(true); setShowTools(false); } },
                 { icon: '🔗', label: t('groups.link'), action: () => { setShowLinkShare(true); setShowTools(false); } },
                 ...(docsEnabled ? [{ icon: <FolderOpen size={14} aria-hidden="true" />, label: t('groups.document'), action: () => { setShowDocPicker(true); setShowTools(false); } }] : []),
+                { icon: <Trophy size={14} aria-hidden="true" />, label: t('quiz.tool'), action: () => { openQuizTool(); setShowTools(false); } },
                 { icon: '⏱', label: t('groups.sessionStart'), action: () => { setShowNewSession(true); setShowTools(false); } },
               ].map((tool, i) => (
                 <motion.button key={i} whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={tool.action}
@@ -1393,6 +1453,17 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
 
       <AnimatePresence>
         {showLinkShare && <LinkShareModal onSend={sendLink} onClose={() => setShowLinkShare(false)} />}
+        {showQuizSetup && (
+          <QuizSetupModal user={user} groupId={group.id} pseudo={pseudo}
+            deckMessages={messages.filter(m => m.type === 'deck')}
+            onClose={() => setShowQuizSetup(false)}
+            onCreated={({ title }) => {
+              setShowQuizSetup(false);
+              setShowQuiz(true);
+              send({ type: 'quiz', text: title });
+            }} />
+        )}
+        {showQuiz && <LiveQuiz user={user} groupId={group.id} pseudo={pseudo} onClose={() => setShowQuiz(false)} />}
         {showDocPicker && <GroupDocPicker user={user} groupId={group.id} onPick={sendDocHere} onClose={() => setShowDocPicker(false)} />}
         {showGroupDocs && (
           <GroupDocsPanel user={user} group={group} onClose={() => setShowGroupDocs(false)}
