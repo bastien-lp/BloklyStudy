@@ -49,6 +49,31 @@ export function closePdf(doc) {
 }
 
 /**
+ * The text of every page, as `[{ page, text }]` (page numbers start at 1).
+ * Scanned PDFs (pictures of pages) have no text layer: their pages come back
+ * empty, which the caller can detect.
+ */
+export async function extractPdfText(data) {
+  const pdf = await openPdf(data);
+  try {
+    const pages = [];
+    for (let n = 1; n <= pdf.numPages; n++) {
+      const content = await (await pdf.getPage(n)).getTextContent();
+      const text = content.items
+        .map(item => (item.str || '') + (item.hasEOL ? '\n' : ' '))
+        .join('')
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+      pages.push({ page: n, text });
+    }
+    return pages;
+  } finally {
+    closePdf(pdf);
+  }
+}
+
+/**
  * First page rendered to a JPEG Blob whose longest side is `maxSize` px —
  * the thumbnail shown on document cards. Resolves to null if the file cannot
  * be read (the card then falls back to the drawn sheet of paper).

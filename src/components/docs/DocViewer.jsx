@@ -11,9 +11,11 @@
 
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, ChevronRight, Download, ExternalLink, X, ZoomIn, ZoomOut, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, ExternalLink, X, ZoomIn, ZoomOut, AlertTriangle, Sparkles } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { getDocObjectUrl, formatBytes } from '../../lib/docs';
+import { isAiFlashcardsAvailable } from '../../lib/aiFlashcards';
+import PdfFlashcardsModal from './PdfFlashcardsModal';
 import { Button } from '../ui';
 import DocCover from './DocCover';
 import { visualFor, byteUnits } from './docVisuals';
@@ -33,6 +35,7 @@ export default function DocViewer({ user, docs, index, onIndexChange, onClose, a
   const [state, setState] = useState({ id: null, url: null, text: null, error: null });
   const [zoomed, setZoomed] = useState(false);
   const [pdfFailed, setPdfFailed] = useState(null); // id of a PDF PDF.js could not read
+  const [cardsFor, setCardsFor] = useState(null);   // id of the PDF being turned into flashcards
   const loaded = state.id === doc?.id;
 
   // Load the current file (object URL; the text itself for text files).
@@ -50,13 +53,14 @@ export default function DocViewer({ user, docs, index, onIndexChange, onClose, a
 
   useEffect(() => {
     function onKey(e) {
+      if (cardsFor) return; // the flashcards dialog on top handles its own keys
       if (e.key === 'Escape') onClose();
       else if (e.key === 'ArrowLeft' && index > 0) { setZoomed(false); onIndexChange(index - 1); }
       else if (e.key === 'ArrowRight' && index < docs.length - 1) { setZoomed(false); onIndexChange(index + 1); }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [index, docs.length, onClose, onIndexChange]);
+  }, [index, docs.length, onClose, onIndexChange, cardsFor]);
 
   if (!doc) return null;
   const { icon: KindIcon, tint } = visualFor(doc.kind);
@@ -146,6 +150,12 @@ export default function DocViewer({ user, docs, index, onIndexChange, onClose, a
           </div>
         </div>
         {actions && actions(doc)}
+        {doc.kind === 'pdf' && loaded && !state.error && isAiFlashcardsAvailable() && (
+          <button style={{ ...iconBtn, width: 'auto', padding: '0 12px', gap: 6, borderRadius: 99, fontSize: '.74rem', fontWeight: 700 }}
+            onClick={() => setCardsFor(doc.id)} aria-label={t('pdfCards.open')} title={t('pdfCards.open')}>
+            <Sparkles size={15} aria-hidden="true" /><span className="hide-mobile">{t('pdfCards.short')}</span>
+          </button>
+        )}
         {doc.kind === 'image' && loaded && !state.error && (
           <button style={iconBtn} onClick={() => setZoomed(z => !z)} aria-label={t(zoomed ? 'docs.zoomOut' : 'docs.zoomIn')} title={t(zoomed ? 'docs.zoomOut' : 'docs.zoomIn')}>
             {zoomed ? <ZoomOut size={16} /> : <ZoomIn size={16} />}
@@ -186,6 +196,10 @@ export default function DocViewer({ user, docs, index, onIndexChange, onClose, a
           </button>
         )}
       </div>
+
+      {cardsFor === doc.id && state.url && (
+        <PdfFlashcardsModal user={user} doc={doc} pdfUrl={state.url} onClose={() => setCardsFor(null)} />
+      )}
     </motion.div>
   );
 }
