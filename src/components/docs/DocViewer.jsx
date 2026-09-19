@@ -1,7 +1,7 @@
 /**
  * DocViewer — full-screen reader for one document, with prev/next.
  * --------------------------------------------------------------------------
- * PDFs use the browser's own viewer (iframe on an object URL), images get a
+ * PDFs are drawn page by page with PDF.js (PdfPages.jsx), images get a
  * click-to-zoom view, text files are shown as text, and office files — which
  * browsers cannot render — get a download card. Keyboard: ← → to move,
  * Esc to close. `actions(doc)` lets the caller add buttons (share, delete…).
@@ -9,7 +9,7 @@
  * Props: { user, docs, index, onIndexChange, onClose, actions? }
  */
 
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, ChevronRight, Download, ExternalLink, X, ZoomIn, ZoomOut, AlertTriangle } from 'lucide-react';
 import { useTranslation } from '../../i18n';
@@ -17,6 +17,9 @@ import { getDocObjectUrl, formatBytes } from '../../lib/docs';
 import { Button } from '../ui';
 import DocCover from './DocCover';
 import { visualFor, byteUnits } from './docVisuals';
+
+// PDF.js is ~1 MB: only fetched the first time a PDF is opened.
+const PdfPages = lazy(() => import('./PdfPages'));
 
 const iconBtn = {
   width: 36, height: 36, borderRadius: '50%', border: 'none', cursor: 'pointer', flexShrink: 0,
@@ -29,6 +32,7 @@ export default function DocViewer({ user, docs, index, onIndexChange, onClose, a
   const doc = docs[index];
   const [state, setState] = useState({ id: null, url: null, text: null, error: null });
   const [zoomed, setZoomed] = useState(false);
+  const [pdfFailed, setPdfFailed] = useState(null); // id of a PDF PDF.js could not read
   const loaded = state.id === doc?.id;
 
   // Load the current file (object URL; the text itself for text files).
@@ -74,7 +78,16 @@ export default function DocViewer({ user, docs, index, onIndexChange, onClose, a
       );
     }
     if (doc.kind === 'pdf') {
-      return <iframe src={state.url} title={doc.name} style={{ width: '100%', height: '100%', border: 'none', borderRadius: 12, background: '#fff' }} />;
+      // PDF.js draws every page the same way on every device. If it cannot
+      // read the file, fall back to the browser's own viewer.
+      if (pdfFailed === doc.id) {
+        return <iframe src={state.url} title={doc.name} style={{ width: '100%', height: '100%', border: 'none', borderRadius: 12, background: '#fff' }} />;
+      }
+      return (
+        <Suspense fallback={<div style={{ color: 'var(--text-muted)', fontSize: '.82rem' }}>{t('common.loading')}</div>}>
+          <PdfPages key={doc.id} url={state.url} name={doc.name} onFail={() => setPdfFailed(doc.id)} />
+        </Suspense>
+      );
     }
     if (doc.kind === 'image') {
       return (

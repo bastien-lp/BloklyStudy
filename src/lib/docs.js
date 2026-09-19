@@ -94,13 +94,25 @@ export const reportLibraryDoc = (user, id, reason) => api(user, 'POST', `/librar
 export const moderateLibraryDoc = (user, id, action) => api(user, 'POST', `/library/${id}/moderate`, { action });
 
 const isRasterImage = file => /^image\/(jpeg|png|webp)$/.test(file.type);
+const isPdf = file => file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
 
 /**
- * Downscales big photos and builds a small thumbnail for images.
+ * Downscales big photos and builds a small thumbnail (images, and the first
+ * page of PDFs).
  * Resolves to `{ file, thumb }` (thumb may be null). Never throws: if the
  * browser cannot decode the image, the original is sent as is.
  */
 async function prepareUpload(file) {
+  if (isPdf(file)) {
+    // First page as the card's thumbnail. PDF.js is loaded only here, on demand.
+    // A failure (PDF.js not reachable, unreadable file) only costs the thumbnail.
+    try {
+      const { renderPdfThumbnail } = await import('./pdf');
+      return { file, thumb: await renderPdfThumbnail(file, THUMB_SIDE) };
+    } catch {
+      return { file, thumb: null };
+    }
+  }
   if (!isRasterImage(file)) return { file, thumb: null };
   try {
     let upload = file;
