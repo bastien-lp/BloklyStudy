@@ -15,13 +15,33 @@
  * `todayKey` / `weekKey` are stored alongside the totals so the reader can
  * tell a genuine "0 today" from "this figure is from last Tuesday".
  *
- * Field names match what the ranking already reads; no new shape is invented.
+ * Field names match what the ranking already reads, plus one addition:
+ * `photoURL`, so the ranking can show a face for EVERYONE and not just for
+ * the reader. Only a LINK is stored there (a Google account picture, say),
+ * never an uploaded photo: those are data URLs of around 10 kB, and the
+ * ranking reads the whole collection — a hundred of them would be a megabyte
+ * downloaded to draw twenty avatars. Uploaded photos keep showing everywhere
+ * they are read one account at a time (profile card, who is online, groups).
  */
 
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { dayKey, weekKey } from './dayKeys';
 import { reportSaveError } from './notify';
+
+/** How long a photo link may be before it is left out of the public standing. */
+const MAX_PHOTO_LINK = 400;
+
+/**
+ * The photo that may go in the public standing: a plain link only.
+ * A `data:` URL is an uploaded photo — far too heavy for a document the whole
+ * ranking downloads — so it is dropped rather than shrunk.
+ */
+export function publicPhoto(url) {
+  const value = String(url || '').trim();
+  if (!/^https?:\/\//i.test(value)) return '';
+  return value.length <= MAX_PHOTO_LINK ? value : '';
+}
 
 /**
  * Sum the XP of sessions falling inside the current day and ISO week.
@@ -50,8 +70,9 @@ export function windowedXp(sessions = []) {
  * @param {string} uid
  * @param {number} totalXp   all-time XP, from `main.xp`
  * @param {Array}  sessions  `main.sessions` (the app keeps the last 30)
+ * @param {string} [photoURL] the account picture, if it is a link
  */
-export async function syncLeaderboard(uid, totalXp, sessions) {
+export async function syncLeaderboard(uid, totalXp, sessions, photoURL = '') {
   if (!uid) return;
   const { xpToday, xpThisWeek, todayKey, weekKey: wk } = windowedXp(sessions);
   try {
@@ -63,6 +84,7 @@ export async function syncLeaderboard(uid, totalXp, sessions) {
       todayKey,
       weekKey: wk,
       updatedAt: new Date().toISOString(),
+      ...(publicPhoto(photoURL) ? { photoURL: publicPhoto(photoURL) } : {}),
     }, { merge: true });
   } catch (e) {
     reportSaveError(e, 'leaderboard sync');

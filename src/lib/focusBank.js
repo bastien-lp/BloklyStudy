@@ -88,7 +88,7 @@ export async function bankFocusSession(uid, secs, xp, { subjId = '', mode = 'fre
     });
 
     // Publish the new standing so the daily/weekly rankings actually move.
-    await syncLeaderboard(uid, newXp, sessions);
+    await syncLeaderboard(uid, newXp, sessions, d.photoURL || '');
   } catch (e) { reportSaveError(e, `${context} — main session save`); }
 
   // Reserve doc: the bamboo grove, plus energy and the per-subject totals.

@@ -42,7 +42,7 @@ import { BADGES } from '../data/badges';
 import { levelFromXp } from '../data/levels';
 import { reportSaveError } from '../lib/notify';
 import { useTranslation } from '../i18n';
-import { FEATURES, readFeatures, isEnabled } from '../lib/features';
+import { FEATURES, FEATURE_IDS, readFeatures, isEnabled } from '../lib/features';
 import { DEV, fmt, inputStyle } from '../lib/devConsole';
 import { StatCard, Chip, Spinner, Empty, ToolButton } from './devUI';
 import DevLive from './DevLive';
@@ -743,11 +743,7 @@ function TabConfig() {
   /** Opens or closes one feature in the draft. */
   const setFeature = (id, open) => setDraft({
     ...current,
-    // Only what is CLOSED is stored: an open feature leaves no trace, so the
-    // default stays "everything works" even if this document is lost.
-    features: open
-      ? Object.fromEntries(Object.entries(features).filter(([key]) => key !== id))
-      : { ...features, [id]: false },
+    features: { ...features, [id]: open },
   });
   const setMsg = v => setDraft({ ...current, systemMessage: v });
   const setMaintenance = fn =>
@@ -756,8 +752,14 @@ function TabConfig() {
   async function save() {
     setSaving(true);
     try {
+      // Every feature is written, open ones included. A merge write merges a
+      // map KEY BY KEY: a key simply left out of the object would keep its old
+      // value in the document, so reopening a feature would do nothing at all.
+      // Only `false` closes anything (lib/features.js), so the `true`s are
+      // harmless and they are what makes reopening work.
+      const allFeatures = Object.fromEntries(FEATURE_IDS.map(id => [id, isEnabled(features, id)]));
       await setDoc(doc(db, 'config', 'app'),
-        { systemMessage: msg, maintenance, features }, { merge: true });
+        { systemMessage: msg, maintenance, features: allFeatures }, { merge: true });
       setSaved(true);
       setTimeout(() => setSaved(false), 2200);
     } catch (e) { reportSaveError(e, 'DevPanel — save config'); }

@@ -47,8 +47,10 @@ const avatarHue = uid => (uid?.charCodeAt(0) * 47 || 0) % 360;
 
 /**
  * A player's round avatar, with an accent ring when it's the current user.
- * `photoURL` is only known for the current user (read from their own main
- * document); `leaderboard/{uid}` docs carry no photo, so others get initials.
+ * `photoURL` comes from the `leaderboard/{uid}` document, which carries a
+ * photo when it is a plain link (a Google account picture). An uploaded photo
+ * is deliberately not published there (see lib/leaderboard.js), so those
+ * players keep their initials here and their photo everywhere else.
  */
 function PlayerAvatar({ uid, pseudo, size, isMe, ring, photoURL }) {
   const hue = avatarHue(uid);
@@ -272,7 +274,7 @@ function Leaderboard({ user, myPhoto, myPseudo, onOpenConv }) {
                     )}
                     <div style={{ position: 'relative' }}>
                       <PlayerAvatar uid={r.uid} pseudo={r.pseudo} size={isWinner ? 48 : 40}
-                        isMe={isMe} ring={isMe ? null : metal} photoURL={isMe ? myPhoto : null} />
+                        isMe={isMe} ring={isMe ? null : metal} photoURL={isMe ? myPhoto : r.photoURL || null} />
                     </div>
                   </div>
 
@@ -327,7 +329,7 @@ function Leaderboard({ user, myPhoto, myPseudo, onOpenConv }) {
                   <span style={{ minWidth: 26, textAlign: 'center', fontSize: '.72rem', fontWeight: 700,
                     fontVariantNumeric: 'tabular-nums',
                     color: isMe ? 'var(--accent)' : 'var(--text-muted)' }}>{i + 4}</span>
-                  <PlayerAvatar uid={r.uid} pseudo={r.pseudo} size={28} isMe={false} />
+                  <PlayerAvatar uid={r.uid} pseudo={r.pseudo} size={28} isMe={false} photoURL={r.photoURL || null} />
                   <span style={{ flex: 1, minWidth: 0, fontSize: '.8rem',
                     fontWeight: isMe ? 700 : 500,
                     color: isMe ? 'var(--accent)' : 'var(--text-secondary)',
