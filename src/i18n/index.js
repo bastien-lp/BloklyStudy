@@ -1483,6 +1483,10 @@ const fr = {
     errTooMany: "Tu as atteint le nombre maximum de notes pour ce document.",
   },
   quiz: {
+    revealSec: "Temps de correction",
+    lengthHint: "Durée estimée du quiz : environ {minutes} min.",
+    musicOn: "Activer la musique",
+    musicOff: "Couper la musique",
     tool: "Quiz en direct",
     title: "Quiz en direct",
     setupTitle: "Lancer un quiz en direct",
@@ -3438,6 +3442,10 @@ const en = {
     errTooMany: "You have reached the maximum number of notes for this document.",
   },
   quiz: {
+    revealSec: "Answer shown for",
+    lengthHint: "Estimated length: about {minutes} min.",
+    musicOn: "Turn the music on",
+    musicOff: "Turn the music off",
     tool: "Live quiz",
     title: "Live quiz",
     setupTitle: "Start a live quiz",
@@ -5559,6 +5567,10 @@ const es = {
     moderated_remove: "Documento retirado de la biblioteca.",
   },
   quiz: {
+    revealSec: "Tiempo de corrección",
+    lengthHint: "Duración estimada: unos {minutes} min.",
+    musicOn: "Activar la música",
+    musicOff: "Quitar la música",
     tool: "Quiz en directo",
     title: "Quiz en directo",
     setupTitle: "Lanzar un quiz en directo",
@@ -7512,6 +7524,10 @@ const de = {
     moderated_remove: "Dokument aus der Bibliothek entfernt.",
   },
   quiz: {
+    revealSec: "Auflösung sichtbar für",
+    lengthHint: "Geschätzte Dauer: etwa {minutes} Min.",
+    musicOn: "Musik einschalten",
+    musicOff: "Musik ausschalten",
     tool: "Live-Quiz",
     title: "Live-Quiz",
     setupTitle: "Live-Quiz starten",

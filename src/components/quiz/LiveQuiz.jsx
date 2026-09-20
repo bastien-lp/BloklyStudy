@@ -5,19 +5,29 @@
  * clock): lobby → 3-2-1 → question (4 answers, countdown) → reveal (right
  * answer, points, top 5) → … → podium. Everyone sees the same second.
  *
- * Answers: four colours from the nature palette, each also marked with a
- * shape, so they are never told apart by colour alone. White text on each
- * colour keeps a contrast of at least 4.5:1.
+ * Answers: four colours from the nature palette, laid out two by two, each
+ * also marked with a shape so they are never told apart by colour alone.
+ * White text on each colour keeps a contrast of at least 4.5:1.
+ *
+ * A generated backing track (lib/quizMusic.js) plays while the quiz runs. It
+ * starts on the tap that joins or launches — never on its own — and can be
+ * muted from the header; the choice is remembered on the device.
+ *
+ * Faces: the players' profile photos are read once per account and cached, so
+ * the lobby, the standings and the podium show people rather than initials.
  *
  * The host starts the quiz and may end it early; it then runs on its own.
  *
  * Props: { user, groupId, pseudo, onClose }
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Triangle, Diamond, Circle, Square, Trophy, Users, X, Check, Crown, Play, Timer } from 'lucide-react';
+import { doc, getDoc } from 'firebase/firestore';
+import { Triangle, Diamond, Circle, Square, Trophy, Users, X, Check, Crown, Play, Timer, Volume2, VolumeX } from 'lucide-react';
+import { db } from '../../firebase/config';
 import { useTranslation } from '../../i18n';
+import { createQuizMusic } from '../../lib/quizMusic';
 import { serverNow, startServerClock } from '../../lib/serverClock';
 import {
   subscribeQuiz, subscribePlayers, quizPhase, standings, pointsFor, joinQuiz, answerQuiz,
@@ -32,11 +42,39 @@ const CHOICES = [
   { color: '#236B43', icon: Square },
 ];
 
+/** uid → photo (or null), kept for the session: a face barely ever changes. */
+const photoCache = new Map();
+/** Faces are only worth fetching for a room of a reasonable size. */
+const MAX_FACES = 24;
+const MUSIC_KEY = 'blokly-quiz-music';
+
+/** One player's face, or their initial on a deterministic colour. */
+function Face({ uid, pseudo, photo, size = 26, ring }) {
+  const hue = (uid?.charCodeAt(0) * 47 || 0) % 360;
+  const common = {
+    width: size, height: size, borderRadius: '50%', flexShrink: 0, display: 'block',
+    boxShadow: ring ? `0 0 0 2px ${ring}` : 'none',
+  };
+  if (photo) return <img src={photo} alt="" style={{ ...common, objectFit: 'cover' }} />;
+  return (
+    <span style={{ ...common, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: size * 0.44, fontWeight: 800, color: '#fff',
+      background: `linear-gradient(150deg, hsl(${hue},62%,58%), hsl(${hue},58%,42%))` }}>
+      {(pseudo || '?')[0].toUpperCase()}
+    </span>
+  );
+}
+
 export default function LiveQuiz({ user, groupId, pseudo, onClose }) {
   const { t, formatNumber } = useTranslation();
   const [quiz, setQuiz] = useState(undefined); // undefined = loading
   const [players, setPlayers] = useState({});
   const [now, setNow] = useState(() => serverNow());
+  const [photos, setPhotos] = useState(() => Object.fromEntries(photoCache));
+  const [muted, setMuted] = useState(() => {
+    try { return localStorage.getItem(MUSIC_KEY) === 'off'; } catch { return false; }
+  });
+  const music = useRef(null);
 
   useEffect(() => startServerClock(), []);
   useEffect(() => subscribeQuiz(groupId, setQuiz), [groupId]);
@@ -45,6 +83,32 @@ export default function LiveQuiz({ user, groupId, pseudo, onClose }) {
     const id = setInterval(() => setNow(serverNow()), 200);
     return () => clearInterval(id);
   }, []);
+  // The faces of whoever is in the room, fetched once per account.
+  useEffect(() => {
+    const wanted = Object.keys(players).slice(0, MAX_FACES).filter(uid => !photoCache.has(uid));
+    if (!wanted.length) return undefined;
+    let alive = true;
+    Promise.allSettled(wanted.map(uid => getDoc(doc(db, 'users', uid, 'data', 'main'))))
+      .then(results => {
+        const found = {};
+        results.forEach((res, i) => {
+          const value = res.status === 'fulfilled' && res.value.exists() ? res.value.data().photoURL || null : null;
+          photoCache.set(wanted[i], value);
+          found[wanted[i]] = value;
+        });
+        if (alive) setPhotos(p => ({ ...p, ...found }));
+      });
+    return () => { alive = false; };
+  }, [players]);
+
+  // The backing track: only while the quiz is actually running, and only after
+  // a tap (autoplay rules), which is why it starts from the buttons below.
+  useEffect(() => () => music.current?.stop(), []);
+
+  const over = quizPhase(quiz, now).phase === 'done';
+  // The track belongs to the game, not to the results screen.
+  useEffect(() => { if (over) music.current?.stop(); }, [over]);
+
   useEffect(() => {
     const onKey = e => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
@@ -60,6 +124,21 @@ export default function LiveQuiz({ user, groupId, pseudo, onClose }) {
   const answeredCount = Object.values(players).filter(p => p.answers?.[phase.index]).length;
   const countdown = quiz?.startedAt && now < quiz.startedAt ? Math.ceil((quiz.startedAt - now) / 1000) : 0;
 
+  /** Starts the track unless it is muted; safe to call as often as needed. */
+  function wakeMusic() {
+    if (muted) return;
+    if (!music.current) music.current = createQuizMusic();
+    if (!music.current.playing()) music.current.start();
+  }
+
+  function toggleMusic() {
+    const next = !muted;
+    setMuted(next);
+    try { localStorage.setItem(MUSIC_KEY, next ? 'off' : 'on'); } catch { /* private mode */ }
+    if (next) music.current?.stop();
+    else wakeMusic();
+  }
+
   function answer(choice) {
     if (!joined || phase.phase !== 'question' || myAnswer) return;
     const slot = (quiz.secondsPerQ + (quiz.revealSec ?? REVEAL_SEC)) * 1000;
@@ -68,6 +147,7 @@ export default function LiveQuiz({ user, groupId, pseudo, onClose }) {
   }
 
   function closeAndMaybeClear() {
+    music.current?.stop();
     if (isHost && phase.phase === 'done') clearQuiz(groupId).catch(() => {});
     onClose();
   }
@@ -87,6 +167,14 @@ export default function LiveQuiz({ user, groupId, pseudo, onClose }) {
             {quiz ? t('quiz.hostedBy', { name: quiz.hostPseudo }) : ''} · <Users size={11} aria-hidden="true" /> {playerCount}
           </div>
         </div>
+        <button type="button" onClick={toggleMusic} aria-pressed={!muted}
+          aria-label={t(muted ? 'quiz.musicOn' : 'quiz.musicOff')} title={t(muted ? 'quiz.musicOn' : 'quiz.musicOff')}
+          style={{ width: 36, height: 36, borderRadius: '50%', border: 'none', cursor: 'pointer',
+            background: muted ? 'var(--bg-card-hover)' : 'var(--accent-subtle)',
+            color: muted ? 'var(--text-muted)' : 'var(--accent)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {muted ? <VolumeX size={17} /> : <Volume2 size={17} />}
+        </button>
         {isHost && phase.phase !== 'done' && phase.phase !== 'lobby' && (
           <Button size="sm" variant="ghost" danger onClick={() => endQuiz(groupId)}>{t('quiz.endNow')}</Button>
         )}
@@ -133,18 +221,20 @@ export default function LiveQuiz({ user, groupId, pseudo, onClose }) {
           <AnimatePresence>
             {Object.entries(players).map(([uid, p]) => (
               <motion.span key={uid} layout initial={{ scale: .6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-                style={{ padding: '6px 12px', borderRadius: 99, fontSize: '.8rem', fontWeight: 700,
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 12px 5px 5px', borderRadius: 99,
+                  fontSize: '.8rem', fontWeight: 700,
                   background: uid === user.uid ? 'var(--accent)' : 'var(--bg-card)', color: uid === user.uid ? 'var(--on-accent, #fff)' : 'var(--text-primary)' }}>
-                {uid === quiz.hostUid && <Crown size={12} aria-hidden="true" style={{ marginRight: 4 }} />}{p.pseudo}
+                <Face uid={uid} pseudo={p.pseudo} photo={photos[uid]} size={24} />
+                {uid === quiz.hostUid && <Crown size={12} aria-hidden="true" />}{p.pseudo}
               </motion.span>
             ))}
           </AnimatePresence>
         </div>
         {!joined && (
-          <Button variant="primary" size="lg" icon={Users} onClick={() => joinQuiz(groupId, user.uid, pseudo)}>{t('quiz.join')}</Button>
+          <Button variant="primary" size="lg" icon={Users} onClick={() => { wakeMusic(); joinQuiz(groupId, user.uid, pseudo); }}>{t('quiz.join')}</Button>
         )}
         {countdown === 0 && (isHost ? (
-          <Button variant="primary" size="lg" icon={Play} onClick={() => startQuiz(groupId)}>{t('quiz.start')}</Button>
+          <Button variant="primary" size="lg" icon={Play} onClick={() => { wakeMusic(); startQuiz(groupId); }}>{t('quiz.start')}</Button>
         ) : joined && (
           <div style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>{t('quiz.waitHost')}</div>
         ))}
@@ -184,7 +274,7 @@ export default function LiveQuiz({ user, groupId, pseudo, onClose }) {
           </motion.div>
         </AnimatePresence>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
           {q.choices.map((c, i) => {
             const { color, icon: Icon } = CHOICES[i];
             const picked = myAnswer?.c === i;
@@ -208,7 +298,7 @@ export default function LiveQuiz({ user, groupId, pseudo, onClose }) {
 
         <div style={{ textAlign: 'center', fontSize: '.85rem', color: 'var(--text-secondary)', minHeight: 24 }} aria-live="polite">
           {!joined ? (
-            <Button variant="primary" icon={Users} onClick={() => joinQuiz(groupId, user.uid, pseudo)}>{t('quiz.joinNow')}</Button>
+            <Button variant="primary" icon={Users} onClick={() => { wakeMusic(); joinQuiz(groupId, user.uid, pseudo); }}>{t('quiz.joinNow')}</Button>
           ) : reveal ? (
             <strong style={{ color: myPoints ? 'var(--success)' : 'var(--text-muted)', fontSize: '1.05rem' }}>
               {myPoints ? t('quiz.points', { points: formatNumber(myPoints) }) : myAnswer ? t('quiz.wrong') : t('quiz.noAnswer')}
@@ -222,7 +312,9 @@ export default function LiveQuiz({ user, groupId, pseudo, onClose }) {
               <div key={r.uid} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderRadius: 12,
                 background: r.uid === user.uid ? 'var(--accent-subtle)' : 'var(--bg-card)', fontSize: '.82rem' }}>
                 <strong style={{ width: 20, color: 'var(--text-muted)' }}>{i + 1}</strong>
-                <span style={{ flex: 1, color: 'var(--text-primary)', fontWeight: r.uid === user.uid ? 800 : 600 }}>{r.pseudo}</span>
+                <Face uid={r.uid} pseudo={r.pseudo} photo={photos[r.uid]} size={24} />
+                <span style={{ flex: 1, minWidth: 0, color: 'var(--text-primary)', fontWeight: r.uid === user.uid ? 800 : 600,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.pseudo}</span>
                 <strong style={{ color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{formatNumber(r.score)}</strong>
               </div>
             ))}
@@ -245,6 +337,8 @@ export default function LiveQuiz({ user, groupId, pseudo, onClose }) {
           <motion.div key={podium[i].uid} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: (2 - i) * .15 }}
             style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, width: 110 }}>
             {i === 0 && <Crown size={22} color="#E3B341" fill="#E3B341" aria-hidden="true" />}
+            <Face uid={podium[i].uid} pseudo={podium[i].pseudo} photo={photos[podium[i].uid]}
+              size={i === 0 ? 54 : 44} ring={['#E3B341', '#AEB7C2', '#C98A5B'][i]} />
             <strong style={{ fontSize: '.85rem', color: 'var(--text-primary)', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{podium[i].pseudo}</strong>
             <span style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>{formatNumber(podium[i].score)}</span>
             <motion.div initial={{ height: 0 }} animate={{ height: heights[i] }} transition={{ delay: .3 + (2 - i) * .15, duration: .5 }}

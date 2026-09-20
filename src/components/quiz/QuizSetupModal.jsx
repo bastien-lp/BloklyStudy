@@ -2,7 +2,8 @@
  * QuizSetupModal — start a live quiz in a study group.
  * --------------------------------------------------------------------------
  * Source: a deck already shared in this group's chat, or one of my own
- * flashcard chapters. Settings: number of questions, seconds per question.
+ * flashcard chapters. Settings: how many questions, how long to answer, and
+ * how long the right answer stays on screen.
  * Needs at least 4 cards with different answers (the wrong choices come from
  * the other answers of the same deck).
  *
@@ -15,7 +16,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { Trophy, X, Users, Layers } from 'lucide-react';
 import { db } from '../../firebase/config';
 import { useTranslation } from '../../i18n';
-import { buildQuestions, createQuiz, QUIZ_COUNTS, QUIZ_SECONDS, MIN_CARDS } from '../../lib/groupQuiz';
+import { buildQuestions, createQuiz, QUIZ_COUNTS, QUIZ_SECONDS, QUIZ_REVEALS, REVEAL_SEC, MIN_CARDS } from '../../lib/groupQuiz';
 import { Button } from '../ui';
 
 export default function QuizSetupModal({ user, groupId, pseudo, deckMessages, onCreated, onClose }) {
@@ -23,7 +24,8 @@ export default function QuizSetupModal({ user, groupId, pseudo, deckMessages, on
   const [mine, setMine] = useState(null);  // [{ key, title, cards }]
   const [pick, setPick] = useState(null);  // source key
   const [count, setCount] = useState(QUIZ_COUNTS[1]);
-  const [seconds, setSeconds] = useState(QUIZ_SECONDS[1]);
+  const [seconds, setSeconds] = useState(QUIZ_SECONDS[3]);
+  const [reveal, setReveal] = useState(REVEAL_SEC);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -65,7 +67,9 @@ export default function QuizSetupModal({ user, groupId, pseudo, deckMessages, on
     setBusy(true);
     setError('');
     try {
-      await createQuiz(groupId, { uid: user.uid, pseudo, title: chosen.title, questions, secondsPerQ: seconds });
+      await createQuiz(groupId, {
+        uid: user.uid, pseudo, title: chosen.title, questions, secondsPerQ: seconds, revealSec: reveal,
+      });
       onCreated({ title: chosen.title });
     } catch {
       setError('quiz.errCreate');
@@ -131,7 +135,7 @@ export default function QuizSetupModal({ user, groupId, pseudo, deckMessages, on
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8 }}>
           <label style={{ fontSize: '.68rem', color: 'var(--text-muted)' }}>
             {t('quiz.questions')}
             <select style={{ ...field, marginTop: 4 }} value={count} onChange={e => setCount(Number(e.target.value))}>
@@ -144,6 +148,15 @@ export default function QuizSetupModal({ user, groupId, pseudo, deckMessages, on
               {QUIZ_SECONDS.map(n => <option key={n} value={n}>{t('quiz.seconds', { count: n })}</option>)}
             </select>
           </label>
+          <label style={{ fontSize: '.68rem', color: 'var(--text-muted)' }}>
+            {t('quiz.revealSec')}
+            <select style={{ ...field, marginTop: 4 }} value={reveal} onChange={e => setReveal(Number(e.target.value))}>
+              {QUIZ_REVEALS.map(n => <option key={n} value={n}>{t('quiz.seconds', { count: n })}</option>)}
+            </select>
+          </label>
+        </div>
+        <div style={{ fontSize: '.66rem', color: 'var(--text-muted)' }}>
+          {t('quiz.lengthHint', { minutes: Math.max(1, Math.round((Math.min(count, possible || count) * (seconds + reveal)) / 60)) })}
         </div>
         {chosen && possible < count && (
           <div style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>{t('quiz.limited', { count: possible })}</div>

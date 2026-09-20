@@ -24,8 +24,10 @@ import { ref as dbRef, onValue, set, update, remove } from 'firebase/database';
 import { rtdb } from '../firebase/config';
 import { serverNow } from './serverClock';
 
-export const QUIZ_COUNTS = [5, 10, 15];
-export const QUIZ_SECONDS = [10, 20, 30];
+export const QUIZ_COUNTS = [5, 8, 10, 12, 15, 20, 25, 30];
+export const QUIZ_SECONDS = [5, 10, 15, 20, 30, 45, 60];
+/** How long the right answer stays on screen, and the default. */
+export const QUIZ_REVEALS = [3, 5, 8, 12];
 export const REVEAL_SEC = 5;
 export const MIN_CARDS = 4;
 const STALE_MS = 2 * 3_600_000;
@@ -145,12 +147,12 @@ export const subscribeQuiz = (groupId, cb) => onValue(quizRef(groupId), s => cb(
 export const subscribePlayers = (groupId, cb) => onValue(playersRef(groupId), s => cb(s.val() || {}), () => cb({}));
 
 /** Creates a quiz in the lobby (clears the previous players). Resolves to its id. */
-export async function createQuiz(groupId, { uid, pseudo, title, questions, secondsPerQ }) {
+export async function createQuiz(groupId, { uid, pseudo, title, questions, secondsPerQ, revealSec = REVEAL_SEC }) {
   const id = `${uid.slice(0, 6)}${Date.now().toString(36)}`;
   const record = {
     id, hostUid: uid, hostPseudo: pseudo, title: String(title || '').slice(0, 80),
-    secondsPerQ, revealSec: REVEAL_SEC, questions,
-    totalMs: questions.length * (secondsPerQ + REVEAL_SEC) * 1000,
+    secondsPerQ, revealSec, questions,
+    totalMs: questions.length * (secondsPerQ + revealSec) * 1000,
     createdAt: serverNow(),
   };
   await set(quizRef(groupId), record);
