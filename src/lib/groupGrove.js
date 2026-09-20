@@ -1,9 +1,15 @@
 /**
  * The group grove — one shared plant per study group, per week.
  * --------------------------------------------------------------------------
- * Every focus session a member finishes waters their group's grove. When the
- * group together reaches its weekly goal, each member who did their share can
- * collect a one-off reward of coins. The grove then starts again on Monday.
+ * A LIVE GROUP SESSION is what waters it: minutes worked together, never
+ * minutes worked alone. When the group reaches its weekly goal, each member
+ * who did their share collects COINS_PER_SHARED_MINUTE per minute they brought
+ * plus GOAL_BONUS. The grove then starts again on Monday.
+ *
+ * That is deliberately worth more than the solo garden: the same minute of a
+ * shared session also grows the personal garden (2 coins a minute there), so
+ * studying together pays about two and a half times as much as studying alone.
+ * It is the one place in the app where the reward is for showing up together.
  *
  * WHY IT IS BUILT THIS WAY (this feature must never break anything else):
  *
@@ -34,7 +40,7 @@
  */
 
 import { ref as dbRef, onValue, runTransaction as rtdbTransaction } from 'firebase/database';
-import { collection, doc, getDocs, query, runTransaction, where } from 'firebase/firestore';
+import { doc, runTransaction } from 'firebase/firestore';
 import { db, rtdb } from '../firebase/config';
 import { weekKey } from './dayKeys';
 
@@ -42,8 +48,12 @@ import { weekKey } from './dayKeys';
 export const GOAL_PER_MEMBER = 120;
 /** Minutes a member must have contributed themselves to collect the reward. */
 export const MIN_SHARE = 30;
-/** What reaching the weekly goal pays each qualifying member. */
-export const GROVE_REWARD = 50;
+/** Coins per minute of SHARED focus, paid when the weekly goal is reached. */
+export const COINS_PER_SHARED_MINUTE = 3;
+/** Flat bonus on top, for reaching the goal at all. */
+export const GOAL_BONUS = 100;
+/** Minutes that can be paid for in one week — a cap, never a target. */
+const MAX_PAID_MINS = 20 * 60;
 /** Sanity cap on one write, so a bad value can never dominate a total. */
 const MAX_MINS = 7 * 24 * 60;
 
@@ -129,6 +139,20 @@ export function groveState(entries, memberIds = [], uid = '', now = new Date()) 
   };
 }
 
+/**
+ * What collecting would pay this member. Pure.
+ * @returns {{ mins, perMinute, bonus, coins }}
+ */
+export function groveReward(myMins) {
+  const mins = Math.max(0, Math.min(MAX_PAID_MINS, Math.round(Number(myMins) || 0)));
+  return {
+    mins,
+    perMinute: COINS_PER_SHARED_MINUTE,
+    bonus: GOAL_BONUS,
+    coins: mins * COINS_PER_SHARED_MINUTE + GOAL_BONUS,
+  };
+}
+
 /** Whether this member may collect this week's reward. Pure. */
 export function canClaimGrove(state, claims = {}, groupId = '') {
   if (!state?.reached) return false;
@@ -155,9 +179,10 @@ function pruneClaims(claims = {}, week, previousWeek) {
  * the client for. What this function does guarantee is that the reward is
  * never paid twice.
  *
+ * @param myMins the member's own minutes this week, from the grove
  * @returns the coins actually paid (0 when it was already collected)
  */
-export async function claimGroveReward(uid, groupId, now = new Date()) {
+export async function claimGroveReward(uid, groupId, myMins = 0, now = new Date()) {
   if (!uid || !groupId) return 0;
   const week = groveWeek(now);
   const previous = groveWeek(new Date(now.getTime() - 7 * 86_400_000));
@@ -170,25 +195,12 @@ export async function claimGroveReward(uid, groupId, now = new Date()) {
     const data = snap.exists() ? snap.data() : {};
     const claims = data.groveClaims || {};
     if (claims[key]) { paid = 0; return; }
-    paid = GROVE_REWARD;
+    paid = groveReward(myMins).coins;
     tx.set(ref, {
-      coins: (Number(data.coins) || 0) + GROVE_REWARD,
+      coins: (Number(data.coins) || 0) + paid,
       groveClaims: { ...pruneClaims(claims, week, previous), [key]: true },
     }, { merge: true });
   });
 
   return paid;
-}
-
-/**
- * Waters the grove of every group this member belongs to.
- * Called once per finished focus session, after the session has already been
- * banked: ONE Firestore query plus one tiny Realtime write per group, and any
- * failure is the caller's to swallow — the session is already safe.
- */
-export async function waterMyGroves(uid, mins, pseudo = '', now = new Date()) {
-  const added = Math.round(Number(mins) || 0);
-  if (!uid || added <= 0) return;
-  const snap = await getDocs(query(collection(db, 'groups'), where('memberIds', 'array-contains', uid)));
-  await Promise.allSettled(snap.docs.map(g => addGroveMinutes(g.id, uid, added, pseudo, now)));
 }

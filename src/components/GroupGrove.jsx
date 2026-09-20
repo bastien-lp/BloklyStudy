@@ -1,9 +1,13 @@
 /**
  * GroupGrove — the group's shared plant of the week.
  * --------------------------------------------------------------------------
- * Opened from the group tools. Shows how much focus time the group has put in
- * together this week, who brought it, and lets a member who did their share
- * collect the reward once the goal is reached.
+ * Opened from the group tools. Shows how much time the group has spent in LIVE
+ * SESSIONS together this week, who brought it, and lets a member who did their
+ * share collect the reward once the goal is reached.
+ *
+ * The panel states the rate, because that is the point of the feature: a
+ * minute of shared focus grows the personal garden AND the grove, so it pays
+ * about two and a half times what the same minute alone pays.
  *
  * It only ever READS the Realtime node and WRITES the member's own reserve
  * document (see lib/groupGrove.js). If the node cannot be read — rules not
@@ -16,15 +20,15 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { doc, getDoc } from 'firebase/firestore';
-import { Trees, X, Users, CloudOff } from 'lucide-react';
+import { Trees, X, Users, CloudOff, Sparkles } from 'lucide-react';
 import { db } from '../firebase/config';
 import { useTranslation } from '../i18n';
 import { formatDuration } from '../lib/duration';
 import { SCENE } from '../lib/gardenPalette';
 import { CoinIcon, GardenBackdrop, GardenPlant } from './GardenScene';
 import {
-  subscribeGrove, groveState, canClaimGrove, claimGroveReward, claimKey,
-  GROVE_REWARD, MIN_SHARE, GOAL_PER_MEMBER,
+  subscribeGrove, groveState, canClaimGrove, claimGroveReward, claimKey, groveReward,
+  COINS_PER_SHARED_MINUTE, GOAL_BONUS, MIN_SHARE, GOAL_PER_MEMBER,
 } from '../lib/groupGrove';
 
 export default function GroupGrove({ user, group, onClose }) {
@@ -50,6 +54,7 @@ export default function GroupGrove({ user, group, onClose }) {
   const memberIds = Array.isArray(group.memberIds) ? group.memberIds : Object.keys(group.members || {});
   const state = groveState(entries || {}, memberIds, user.uid);
   const claimable = entries && canClaimGrove(state, claims, group.id);
+  const reward = groveReward(state.myMins);
   const alreadyClaimed = !!claims[claimKey(group.id, state.week)];
   const dur = mins => formatDuration(mins / 60, lang);
 
@@ -60,7 +65,7 @@ export default function GroupGrove({ user, group, onClose }) {
     if (busy || !claimable) return;
     setBusy(true);
     try {
-      const paid = await claimGroveReward(user.uid, group.id);
+      const paid = await claimGroveReward(user.uid, group.id, state.myMins);
       setClaims(c => ({ ...c, [claimKey(group.id, state.week)]: true }));
       if (paid > 0) setJustPaid(paid);
     } catch { /* the transaction failed: nothing was paid, nothing to undo */ }
@@ -124,7 +129,14 @@ export default function GroupGrove({ user, group, onClose }) {
                   style={{ height: '100%', borderRadius: 10, background: `linear-gradient(90deg, ${SCENE.leafLight}, ${SCENE.leafDeep})` }} />
               </div>
               <div style={{ fontSize: '.68rem', color: 'var(--text-muted)', marginTop: 7, lineHeight: 1.6 }}>
-                {t('grove.rule', { each: GOAL_PER_MEMBER, members: state.memberCount, share: MIN_SHARE, reward: GROVE_REWARD })}
+                {t('grove.rule', { each: GOAL_PER_MEMBER, members: state.memberCount, share: MIN_SHARE })}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 7, marginTop: 8, padding: '9px 11px', borderRadius: 12,
+                background: 'var(--accent-subtle)' }}>
+                <Sparkles size={14} aria-hidden="true" style={{ color: SCENE.leaf, flexShrink: 0, marginTop: 1 }} />
+                <span style={{ fontSize: '.7rem', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+                  {t('grove.advantage', { rate: COINS_PER_SHARED_MINUTE, bonus: GOAL_BONUS })}
+                </span>
               </div>
             </div>
 
@@ -137,7 +149,9 @@ export default function GroupGrove({ user, group, onClose }) {
                 <div style={{ fontSize: '.68rem', color: 'var(--text-muted)' }}>
                   {justPaid > 0 || alreadyClaimed ? t('grove.collected')
                     : state.reached
-                      ? (state.missingForMe > 0 ? t('grove.needShare', { count: state.missingForMe }) : t('grove.readyToCollect'))
+                      ? (state.missingForMe > 0
+                        ? t('grove.needShare', { count: state.missingForMe })
+                        : t('grove.readyDetail', { mins: reward.mins, rate: reward.perMinute, bonus: reward.bonus }))
                       : t('grove.keepGoing', { time: dur(Math.max(0, state.goal - state.total)) })}
                 </div>
               </div>
@@ -146,7 +160,9 @@ export default function GroupGrove({ user, group, onClose }) {
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 16px', borderRadius: 22, border: 'none',
                   cursor: claimable && !busy ? 'pointer' : 'not-allowed', opacity: claimable ? 1 : .5,
                   background: SCENE.leafDeep, color: SCENE.cream, fontSize: '.76rem', fontWeight: 800 }}>
-                {alreadyClaimed || justPaid > 0 ? t('grove.collected') : <>{t('grove.collect')} +{GROVE_REWARD} <CoinIcon size={13} /></>}
+                {alreadyClaimed || justPaid > 0
+                  ? t('grove.collected')
+                  : <>{t('grove.collect')} +{reward.coins} <CoinIcon size={13} /></>}
               </motion.button>
             </div>
 

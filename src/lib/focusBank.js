@@ -10,7 +10,8 @@
  *   users/{uid}/data/main    : xp, level, todayMins, todaySess, statsDay,
  *                              streak, lastStudyDay, totalFocusHours, leaves,
  *                              sessions (last 30)
- *   groupGroves/{groupId}/{uid}  : the group grove, in the Realtime Database
+ *   groupGroves/{groupId}/{uid}  : the group grove, in the Realtime Database,
+ *                              for a live group session only
  *   users/{uid}/data/reserve : bamboo (the garden), studyTime[subjId],
  *                              energy, lastStudyDay
  *
@@ -24,7 +25,7 @@ import { dayKey, daysBetween } from './dayKeys';
 import { syncLeaderboard } from './leaderboard';
 import { reportSaveError } from './notify';
 import { readGarden, writeGarden, addMinutes } from './bambooGarden';
-import { waterMyGroves } from './groupGrove';
+import { addGroveMinutes } from './groupGrove';
 
 /** XP earned for a number of focused seconds (10 XP per full minute). */
 export function computeXP(secs) {
@@ -39,10 +40,12 @@ export function computeXP(secs) {
  * @param {string} uid    the signed-in user's id
  * @param {number} secs   seconds actually focused
  * @param {number} xp     XP to award (see computeXP)
- * @param {object} opts   { subjId, mode, context } — `context` only labels
- *                        error reports, so failures are traceable per caller.
+ * @param {object} opts   { subjId, mode, groupId, context } — `groupId` is set
+ *                        only by a live group session, and is what waters that
+ *                        group's grove; `context` labels error reports, so
+ *                        failures are traceable per caller.
  */
-export async function bankFocusSession(uid, secs, xp, { subjId = '', mode = 'free', context = 'Focus' } = {}) {
+export async function bankFocusSession(uid, secs, xp, { subjId = '', mode = 'free', groupId = '', context = 'Focus' } = {}) {
   if (!uid) return;
   const mins = Math.floor(secs / 60);
   const today = dayKey();
@@ -108,11 +111,11 @@ export async function bankFocusSession(uid, secs, xp, { subjId = '', mode = 'fre
     } catch (e) { reportSaveError(e, `${context} — reserve save`); }
   }
 
-  // Finally, the groves of my study groups (lib/groupGrove.js). Last on
-  // purpose and deliberately SILENT: the session is already saved, so a group
-  // that cannot be read or written — rules not published, offline, no group at
-  // all — must cost nothing and warn about nothing.
-  if (mins > 0) {
-    try { await waterMyGroves(uid, mins, myPseudo); } catch { /* optional feature */ }
+  // Finally, the grove of the group this session belongs to — a live shared
+  // session, never a solo one (lib/groupGrove.js). Last on purpose and
+  // deliberately SILENT: the session is already saved, so a grove that cannot
+  // be written (rules not published, offline) costs nothing and warns nobody.
+  if (mins > 0 && groupId) {
+    try { await addGroveMinutes(groupId, uid, mins, myPseudo); } catch { /* optional feature */ }
   }
 }

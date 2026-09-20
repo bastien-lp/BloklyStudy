@@ -38,7 +38,9 @@ export async function bankMyGroupSession(uid, membership, { chime = true } = {})
 
   try {
     if (xp > 0) {
-      await bankFocusSession(uid, secs, xp, { subjId: '', mode: 'group', context: 'Group session' });
+      await bankFocusSession(uid, secs, xp, {
+        subjId: '', mode: 'group', groupId: membership.groupId, context: 'Group session',
+      });
       if (chime) playChime(0.6);
       notify('groups.sessionBanked', 'success');
     }
