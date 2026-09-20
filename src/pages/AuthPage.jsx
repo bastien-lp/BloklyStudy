@@ -86,7 +86,7 @@ export default function AuthPage({ onBack, defaultTab = 'login' }) {
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg,#0f0f1a 0%,#1a1a2e 50%,#0f2040 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, fontFamily: 'sans-serif' }}>
       <button onClick={onBack} style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,.4)', fontSize: '.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>← {t('auth.backHome')}</button>
-      <div style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 16, padding: '2.5rem', width: 400, maxWidth: '95vw', backdropFilter: 'blur(20px)' }}>
+      <div style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 16, padding: '2.5rem', width: 400, maxWidth: '95vw', boxSizing: 'border-box', backdropFilter: 'blur(20px)' }}>
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: '2rem', justifyContent: 'center' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>

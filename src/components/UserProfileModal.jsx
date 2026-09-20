@@ -325,7 +325,7 @@ export default function UserProfileModal({ targetUid, targetPseudo, user, online
               <motion.div initial={{scale:.9,y:10}} animate={{scale:1,y:0}} exit={{scale:.9,opacity:0}}
                 onClick={e=>e.stopPropagation()}
                 style={{ background:'var(--bg-modal)',border:'1px solid var(--border-strong)',borderRadius:20,
-                  padding:'2rem',width:260,maxWidth:'90vw',textAlign:'center',boxShadow:'var(--card-shadow)' }}>
+                  padding:'2rem',width:260,maxWidth:'90vw',boxSizing:'border-box',textAlign:'center',boxShadow:'var(--card-shadow)' }}>
                 <div style={{ fontSize:'3rem',marginBottom:10 }}>{selectedBadge.ico||'🏅'}</div>
                 <div style={{ fontSize:'1.05rem',fontWeight:800,color:'var(--text-primary)',marginBottom:8 }}>{selectedBadge.id?t('badges.'+selectedBadge.id+'_name'):(selectedBadge.name||'')}</div>
                 <div style={{ fontSize:'.82rem',color:'var(--text-secondary)',lineHeight:1.5 }}>{selectedBadge.id?t('badges.'+selectedBadge.id+'_desc'):(selectedBadge.desc||'')}</div>

@@ -431,7 +431,7 @@ function BadgesSection({ earnedBadges = [] }) {
             <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, pointerEvents: 'none' }}>
               <motion.div layoutId={`badge-${active}`}
                 style={{ background: 'var(--bg-modal)', border: `1px solid ${earnedSet.has(active) ? 'rgba(87,255,43,.3)' : 'var(--border-strong)'}`,
-                  borderRadius: 24, padding: '2.5rem', width: 280, maxWidth: '90vw', textAlign: 'center', pointerEvents: 'auto',
+                  borderRadius: 24, padding: '2.5rem', width: 280, maxWidth: '90vw', boxSizing: 'border-box', textAlign: 'center', pointerEvents: 'auto',
                   boxShadow: earnedSet.has(active) ? '0 0 40px var(--accent-glow)' : 'var(--card-shadow)' }}>
                 <div style={{ fontSize: '3.5rem', marginBottom: 12 }}>{earnedSet.has(active) ? activeBadge.ico : '🔒'}</div>
                 <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: 8 }}>{t('badges.' + activeBadge.id + '_name')}</div>

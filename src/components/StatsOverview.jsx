@@ -224,7 +224,7 @@ export default function StatsOverview({ data }) {
       </div>
 
       {/* ── Tiles ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(128px, 1fr))', gap: 8 }}>
         {tiles.map((tile, i) => <Tile key={i} {...tile} />)}
       </div>
 

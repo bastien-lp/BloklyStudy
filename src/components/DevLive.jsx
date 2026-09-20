@@ -110,7 +110,8 @@ function Metric({ label, value, muted }) {
 function AdoptionBar({ label, count, pct, total }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-      <span style={{ width: 170, flexShrink: 0, fontSize: '.72rem', color: 'var(--text-secondary)' }}>{label}</span>
+      <span style={{ flex: '0 1 170px', minWidth: 0, fontSize: '.72rem', color: 'var(--text-secondary)',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
       <div style={{ flex: 1, height: 9, borderRadius: 9, background: 'var(--bg-card-hover)', overflow: 'hidden' }}>
         <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: .5, ease: 'easeOut' }}
           style={{ height: '100%', borderRadius: 9, background: pct >= 50 ? '#27AE60' : pct >= 20 ? 'var(--accent)' : 'var(--danger)' }} />
@@ -272,7 +273,7 @@ export default function DevLive() {
       </div>
 
       {/* ── Who, and what they use ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.15fr)', gap: 12, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12, alignItems: 'start' }}>
 
         {/* Left: online now, then last seen */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 460, overflowY: 'auto' }}>

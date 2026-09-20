@@ -49,7 +49,7 @@ function Entry({ color, time, label, done, dashed, title }) {
         padding: '0 4px 0 0', borderRadius: 4, background: done ? 'transparent' : `${color}1f`,
         borderLeft: `3px ${dashed ? 'dashed' : 'solid'} ${color}`, opacity: done ? .55 : 1 }}>
       {time && (
-        <span style={{ fontSize: '.6rem', fontWeight: 700, color: 'var(--text-muted)', flexShrink: 0,
+        <span className="month-entry-time" style={{ fontSize: '.6rem', fontWeight: 700, color: 'var(--text-muted)', flexShrink: 0,
           fontVariantNumeric: 'tabular-nums', paddingLeft: 4 }}>
           {time}
         </span>
@@ -150,6 +150,14 @@ export default function MonthView({ blocks, subjects, onAddBlock, onToggleBlock,
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+      <style>{`
+        .month-layout { display: grid; gap: 12px; align-items: start; }
+        @media (max-width: 760px) {
+          .month-layout { grid-template-columns: 1fr !important; }
+          .month-entry-time { display: none; }
+          .month-day { height: 92px !important; }
+        }
+      `}</style>
 
       {/* Header mois */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
@@ -183,7 +191,7 @@ export default function MonthView({ blocks, subjects, onAddBlock, onToggleBlock,
         </motion.button>
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns: selectedDay ? '1fr 280px' : '1fr', gap:12, alignItems:'start' }}>
+      <div className="month-layout" style={{ gridTemplateColumns: selectedDay ? '1fr 280px' : '1fr' }}>
 
         {/* Grille calendrier */}
         <div style={{ background:'var(--bg-card)', border:'1px solid var(--border)', borderRadius:14, overflow:'hidden' }}>
@@ -231,6 +239,7 @@ export default function MonthView({ blocks, subjects, onAddBlock, onToggleBlock,
                   <motion.div key={di}
                     whileHover={{ background:'rgba(255,255,255,.05)' }}
                     onClick={()=>setSelectedDay(isSelected?null:day)}
+                    className="month-day"
                     style={{ height: CELL_H, boxSizing: 'border-box', overflow: 'hidden', padding:'5px 5px 4px', cursor:'pointer',
                       borderRight: di<6 ? '1px solid var(--border)' : 'none',
                       background: isSelected ? 'var(--accent-subtle)' : isToday ? 'var(--accent-subtle)' : 'transparent',

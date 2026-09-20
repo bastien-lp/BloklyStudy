@@ -34,7 +34,7 @@ const overlay = {
 };
 
 const sheet = {
-  width: 420, maxWidth: '100%', maxHeight: '88vh', borderRadius: 20, padding: '1.4rem',
+  width: 420, maxWidth: '100%', boxSizing: 'border-box', maxHeight: '88vh', borderRadius: 20, padding: '1.4rem',
   background: 'var(--bg-modal)', border: '1px solid var(--border-strong)',
   display: 'flex', flexDirection: 'column', gap: 12,
 };
@@ -441,7 +441,7 @@ export function ImportDeckModal({ cards, title, subjects, flashcards, onConfirm,
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       style={overlay} onClick={e => e.target === e.currentTarget && onClose()}>
       <motion.div initial={{ scale: .93, y: 18 }} animate={{ scale: 1, y: 0 }}
-        style={{ ...sheet, width: 380 }}>
+        style={{ ...sheet, width: 380, maxWidth: '100%' }}>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Download size={16} strokeWidth={2.2} style={{ color: '#27AE60' }} />

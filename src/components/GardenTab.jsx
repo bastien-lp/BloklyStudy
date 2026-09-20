@@ -139,7 +139,7 @@ export default function GardenTab({ garden, subjects = [], coins = 0, species = 
           gap: 4, flexWrap: 'wrap',
         }}>
           {state.plants.map(plant => (
-            <div key={plant.index} style={{ width: 168, maxWidth: '33%', minWidth: 104, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+            <div key={plant.index} style={{ width: 168, maxWidth: '33%', minWidth: 92, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
               <GardenPlant species={species} pct={plant.pct} ripe={plant.ripe} tints={tints} />
               <PlotSign tone={plant.ripe ? '#FFE6A8' : SCENE.cream}>
                 {plant.ripe ? t('garden.ripe') : t('garden.minutesOf', { mins: plant.mins, total: MINUTES_PER_BAMBOO })}
@@ -150,7 +150,7 @@ export default function GardenTab({ garden, subjects = [], coins = 0, species = 
           {Array.from({ length: freePlots }, (_, i) => {
             const isNext = i === 0 && price != null;
             return (
-              <div key={`free${i}`} style={{ width: 168, maxWidth: '33%', minWidth: 104, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, opacity: isNext ? .95 : .6 }}>
+              <div key={`free${i}`} style={{ width: 168, maxWidth: '33%', minWidth: 92, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, opacity: isNext ? .95 : .6 }}>
                 <button type="button" onClick={() => isNext && canBuy && onBuyPlot()} disabled={!isNext || !canBuy}
                   aria-label={t('garden.buyPlot')}
                   style={{ all: 'unset', width: '100%', cursor: isNext && canBuy ? 'pointer' : 'default' }}>

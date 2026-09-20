@@ -452,7 +452,7 @@ function PollModal({ onSend, onClose }) {
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', backdropFilter: 'blur(12px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
       onClick={e => e.target === e.currentTarget && onClose()}>
       <motion.div initial={{ scale: .92, y: 16 }} animate={{ scale: 1, y: 0 }}
-        style={{ background: 'var(--bg-modal)', border: '1px solid var(--border-strong)', borderRadius: 18, padding: '1.5rem', width: 360, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        style={{ background: 'var(--bg-modal)', border: '1px solid var(--border-strong)', borderRadius: 18, padding: '1.5rem', width: 360, maxWidth: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 12 }}>
         <h3 style={{ color: 'var(--text-primary)', fontWeight: 800, margin: 0 }}>📊 {t('groups.createPoll')}</h3>
         <div>
           <label style={{ fontSize: '.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>{t('groups.question')} *</label>
@@ -498,7 +498,7 @@ function LinkShareModal({ onSend, onClose }) {
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', backdropFilter: 'blur(12px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
       onClick={e => e.target === e.currentTarget && onClose()}>
       <motion.div initial={{ scale: .92, y: 16 }} animate={{ scale: 1, y: 0 }}
-        style={{ background: 'var(--bg-modal)', border: '1px solid var(--border-strong)', borderRadius: 18, padding: '1.5rem', width: 360, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        style={{ background: 'var(--bg-modal)', border: '1px solid var(--border-strong)', borderRadius: 18, padding: '1.5rem', width: 360, maxWidth: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 12 }}>
         <h3 style={{ color: 'var(--text-primary)', fontWeight: 800, margin: 0 }}>🔗 {t('groups.shareLink')}</h3>
         <div>
           <label style={{ fontSize: '.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>{t('groups.linkUrl')} *</label>
@@ -527,7 +527,7 @@ function ConfirmModal({ title, message, confirmLabel, danger = false, onConfirm,
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', backdropFilter: 'blur(12px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
       onClick={e => e.target === e.currentTarget && onClose()}>
       <motion.div initial={{ scale: .92, y: 16 }} animate={{ scale: 1, y: 0 }}
-        style={{ background: 'var(--bg-modal)', border: '1px solid var(--border-strong)', borderRadius: 18, padding: '1.5rem', width: 340, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        style={{ background: 'var(--bg-modal)', border: '1px solid var(--border-strong)', borderRadius: 18, padding: '1.5rem', width: 340, maxWidth: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 14 }}>
         <h3 style={{ color: 'var(--text-primary)', fontWeight: 800, fontSize: '1rem', margin: 0 }}>{title}</h3>
         <p style={{ color: 'var(--text-secondary)', fontSize: '.84rem', margin: 0, lineHeight: 1.5 }}>{message}</p>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -1922,7 +1922,7 @@ function CreateGroupModal({ user, photoURL, onCreated, onClose }) {
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', backdropFilter: 'blur(12px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
       onClick={e => e.target === e.currentTarget && onClose()}>
       <motion.div initial={{ scale: .92, y: 20 }} animate={{ scale: 1, y: 0 }}
-        style={{ background: 'var(--bg-modal)', border: '1px solid var(--border-strong)', borderRadius: 20, padding: '1.5rem', width: 400, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        style={{ background: 'var(--bg-modal)', border: '1px solid var(--border-strong)', borderRadius: 20, padding: '1.5rem', width: 400, maxWidth: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 14 }}>
         <h3 style={{ color: 'var(--text-primary)', fontWeight: 800, fontSize: '1rem', margin: 0 }}>✨ {t('groups.createGroup')}</h3>
         <div>
           <label style={{ fontSize: '.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>{t('groups.icon')}</label>

@@ -1026,7 +1026,7 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
             style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', backdropFilter: 'blur(12px)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             onClick={e => e.target === e.currentTarget && setShowDevCode(false)}>
             <motion.div initial={{ scale: .9, y: 20 }} animate={{ scale: 1, y: 0 }}
-              style={{ background: '#0a0a18', border: '1px solid rgba(255,100,0,.3)', borderRadius: 16, padding: '2rem', width: 300, display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+              style={{ background: '#0a0a18', border: '1px solid rgba(255,100,0,.3)', borderRadius: 16, padding: '2rem', width: 300, maxWidth: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
               <div style={{ fontSize: '1.5rem' }}>🛠️</div>
               <div style={{ fontSize: '.85rem', color: 'rgba(255,255,255,.6)', textAlign: 'center' }}>
                 {t('app.devCodePrompt')}

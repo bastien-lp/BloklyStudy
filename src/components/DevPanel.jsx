@@ -193,7 +193,7 @@ async function fetchConfig() {
 function MasterDetail({ list, detail }) {
   return (
     <div style={{
-      display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)',
+      display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
       gap: 12, height: '100%', minHeight: 0,
     }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto', minHeight: 0 }}>
