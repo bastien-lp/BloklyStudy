@@ -842,6 +842,30 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
     return () => { unsub(); clearInterval(id); };
   }, [group.id]);
 
+  /**
+   * Invitations that have run their course.
+   *
+   * A "join the quiz" or "join the session" bubble is only useful while there
+   * is something to join. Once the quiz is over or the session has ended, it
+   * is a button that leads nowhere — so it leaves the conversation. Nothing is
+   * deleted: the message stays in Firestore, it is simply not shown, which
+   * keeps the history intact and needs no permission to write.
+   *
+   * A session is matched by the id it carries; a quiz carries none, so only
+   * the most recent quiz bubble can be the live one.
+   */
+  const lastQuizMsgId = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) if (messages[i].type === 'quiz') return messages[i].id;
+    return null;
+  })();
+  const sessionRunning = sessionVisible && sessionPhase.phase !== 'done';
+  const isSpentInvite = m => {
+    if (m.type === 'quiz') return !quizLive || m.id !== lastQuizMsgId;
+    if (m.type === 'focus') return !(sessionRunning && liveSession?.id === m.sessionId);
+    return false;
+  };
+  const shownMessages = messages.filter(m => !isSpentInvite(m));
+
   function openQuizTool() {
     if (quizLive) setShowQuiz(true); else setShowQuizSetup(true);
   }
@@ -1313,15 +1337,15 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
             {t('groups.loadOlder')}
           </button>
         )}
-        {messages.length === 0 ? (
+        {shownMessages.length === 0 ? (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, color: 'var(--text-muted)' }}>
             <span style={{ fontSize: '2.5rem' }}>💬</span>
             <span style={{ fontSize: '.85rem' }}>{t('groups.beFirst')}</span>
           </div>
-        ) : messages.map((m, i) => {
+        ) : shownMessages.map((m, i) => {
           const isMe = m.uid === user.uid;
-          const prev = messages[i - 1];
-          const next = messages[i + 1];
+          const prev = shownMessages[i - 1];
+          const next = shownMessages[i + 1];
           const showAv = prev?.uid !== m.uid;
           const showTm = next?.uid !== m.uid || !next;
           const showDate = !prev || new Date(m.sentAt).toDateString() !== new Date(prev.sentAt).toDateString();

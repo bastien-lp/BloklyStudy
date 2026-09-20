@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Home } from 'lucide-react';
 import { doc, getDoc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { BADGES, BADGE_ICONS } from '../data/badges';
 import { useTranslation } from '../i18n';
 import { reportSaveError } from '../lib/notify';
+import { canVisitHouse, houseVisibility } from '../lib/houseVisit';
+import HouseVisit from './HouseVisit';
 
 export default function UserProfileModal({ targetUid, targetPseudo, user, online=false, onClose, onOpenConv }) {
   const { t } = useTranslation();
@@ -17,6 +20,7 @@ export default function UserProfileModal({ targetUid, targetPseudo, user, online
   const [busy, setBusy]         = useState(false);
   const [expandedBadges, setExpandedBadges] = useState(false);
   const [selectedBadge, setSelectedBadge]   = useState(null);
+  const [visiting, setVisiting]             = useState(false);
 
   const isSelf = targetUid === user?.uid;
   const color  = `hsl(${(targetUid?.charCodeAt(0)*47||0)%360},60%,50%)`;
@@ -74,6 +78,9 @@ export default function UserProfileModal({ targetUid, targetPseudo, user, online
   const pseudo    = data?.profile?.pseudo || targetPseudo;
   const photo     = data?.photoURL;
   const xpTotal   = (lbData?.xp ?? data?.xp ?? 0);
+  // The house: the owner decides who comes in (lib/houseVisit.js), and the
+  // Firestore rules enforce it — the button only reflects that choice.
+  const houseOpen = !!data && canVisitHouse({ visibility: houseVisibility(data), isFriend, isSelf });
 
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
@@ -180,6 +187,18 @@ export default function UserProfileModal({ targetUid, targetPseudo, user, online
                 </motion.button>
               )}
             </div>
+          )}
+
+          {/* The house, when its owner leaves it open */}
+          {houseOpen && (
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: .98 }}
+              onClick={() => setVisiting(true)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                padding: '11px', borderRadius: 12, cursor: 'pointer', border: '1px solid var(--border-strong)',
+                background: 'var(--bg-card)', color: 'var(--text-secondary)', fontSize: '.82rem', fontWeight: 600 }}>
+              <Home size={15} strokeWidth={2.2} aria-hidden="true" />
+              {t('house.visit')}
+            </motion.button>
           )}
 
           {/* Bio */}
@@ -328,6 +347,12 @@ export default function UserProfileModal({ targetUid, targetPseudo, user, online
           )}
         </AnimatePresence>
       </motion.div>
+      <AnimatePresence>
+        {visiting && (
+          <HouseVisit uid={targetUid} pseudo={pseudo} visibility={houseVisibility(data)}
+            isFriend={isFriend} isSelf={isSelf} onClose={() => setVisiting(false)} />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

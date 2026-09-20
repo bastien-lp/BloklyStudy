@@ -45,7 +45,13 @@ const YEARS = [
   { value: 'Autre',    labelKey: 'profile.otherYear' },
 ];
 
-const DEFAULT_PRIVACY = { public: true, stats: true, badges: true, leaderboard: true, online: true };
+import { HOUSE_VISIBILITY, DEFAULT_HOUSE_VISIBILITY } from '../lib/houseVisit';
+
+const DEFAULT_PRIVACY = {
+  public: true, stats: true, badges: true, leaderboard: true, online: true,
+  // Who may walk through the rooms decorated in the Réserve (lib/houseVisit).
+  house: DEFAULT_HOUSE_VISIBILITY,
+};
 
 function Avatar({ name, size = 48, color = '#4A90D9', level, online = false, photoURL = null }) {
   const { t } = useTranslation();
@@ -399,6 +405,30 @@ export default function PageProfile({ user, onOpenConv }) {
                   </motion.button>
                 </div>
               ))}
+
+              {/* Who may visit the house: three answers, not a switch. */}
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 7 }}>
+                <div>
+                  <div style={{ fontSize: '.82rem', color: 'var(--text-primary)', fontWeight: 500 }}>{t('house.privacyTitle')}</div>
+                  <div style={{ fontSize: '.65rem', color: 'var(--text-muted)' }}>{t('house.privacyDesc')}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {HOUSE_VISIBILITY.map(v => {
+                    const active = (privacy.house || DEFAULT_HOUSE_VISIBILITY) === v;
+                    return (
+                      <button key={v} type="button" aria-pressed={active}
+                        onClick={() => setPrivacy(pr => ({ ...pr, house: v }))}
+                        style={{ padding: '6px 13px', borderRadius: 99, border: 'none', cursor: 'pointer',
+                          fontSize: '.74rem', fontWeight: active ? 700 : 500,
+                          background: active ? 'var(--accent-subtle)' : 'var(--bg-card-hover)',
+                          color: active ? 'var(--text-primary)' : 'var(--text-muted)',
+                          boxShadow: active ? 'inset 0 0 0 1.5px var(--accent)' : 'none' }}>
+                        {t(`house.vis_${v}`)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
             {/* Public-profile preview — opens the shared modal */}
