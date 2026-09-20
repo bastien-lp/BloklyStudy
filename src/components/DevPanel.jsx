@@ -7,6 +7,7 @@
  *
  * What it does:
  *   - Stats   : live figures derived from the public `leaderboard` collection
+ *   - En ligne: who is connected right now and what each account uses
  *   - Users   : inspect and adjust a player's XP / level / streak
  *   - Groups  : inspect groups, and delete one with its messages
  *   - Themes  : unlock every theme for the current session (local only)
@@ -31,7 +32,7 @@ import {
   getDoc, setDoc, writeBatch, query, limit as qLimit,
 } from 'firebase/firestore';
 import {
-  BarChart3, Users as UsersIcon, MessageSquare, Palette, Settings,
+  BarChart3, Users as UsersIcon, MessageSquare, Palette, Settings, Radio,
   RefreshCw, Search, Copy, Trash2, Save, X, AlertTriangle, Megaphone, Wrench,
 } from 'lucide-react';
 import { db } from '../firebase/config';
@@ -40,11 +41,9 @@ import { BADGES } from '../data/badges';
 import { levelFromXp } from '../data/levels';
 import { reportSaveError } from '../lib/notify';
 import { useTranslation } from '../i18n';
-
-/** Console chrome colour — intentionally outside the theme palette. */
-const DEV = '#ff6400';
-
-const fmt = n => (Number(n) || 0).toLocaleString('fr-FR');
+import { DEV, fmt, inputStyle } from '../lib/devConsole';
+import { StatCard, Chip, Spinner, Empty, ToolButton } from './devUI';
+import DevLive from './DevLive';
 
 /** ISO day key for a Firestore ISO string, or '' when absent. */
 const dayOf = iso => (typeof iso === 'string' ? iso.slice(0, 10) : '');
@@ -58,75 +57,6 @@ function memberCount(g) {
   if (Array.isArray(g?.memberIds)) return g.memberIds.length;
   if (g?.members && typeof g.members === 'object') return Object.keys(g.members).length;
   return 0;
-}
-
-// ── Shared bits ─────────────────────────────────────────────────────────────
-
-const inputStyle = {
-  padding: '7px 10px', borderRadius: 8, outline: 'none', boxSizing: 'border-box',
-  border: '1px solid var(--border-strong)', background: 'var(--bg-input)',
-  color: 'var(--text-primary)', fontSize: '.82rem', fontFamily: 'inherit',
-};
-
-function StatCard({ label, value, color = 'var(--accent)', sub }) {
-  return (
-    <div style={{
-      padding: 14, borderRadius: 12, textAlign: 'center',
-      background: 'var(--bg-card)', border: '1px solid var(--border)',
-    }}>
-      <div style={{ fontSize: '1.5rem', fontWeight: 900, color, lineHeight: 1.1, wordBreak: 'break-word' }}>
-        {value}
-      </div>
-      <div style={{ fontSize: '.68rem', color: 'var(--text-muted)', marginTop: 5 }}>{label}</div>
-      {sub && <div style={{ fontSize: '.6rem', color: 'var(--text-muted)', opacity: .7, marginTop: 2 }}>{sub}</div>}
-    </div>
-  );
-}
-
-function Chip({ children, color = 'var(--accent)' }) {
-  return (
-    <span style={{
-      padding: '2px 8px', borderRadius: 20, fontSize: '.62rem', fontWeight: 700,
-      background: 'var(--accent-subtle)', color, border: '1px solid var(--border)',
-      whiteSpace: 'nowrap',
-    }}>
-      {children}
-    </span>
-  );
-}
-
-function Spinner({ label = 'Chargement…' }) {
-  return (
-    <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2.5rem', fontSize: '.82rem' }}>
-      {label}
-    </div>
-  );
-}
-
-function Empty({ children }) {
-  return (
-    <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2.5rem', fontSize: '.82rem' }}>
-      {children}
-    </div>
-  );
-}
-
-/** Small icon+label button used across the console. */
-function ToolButton({ icon: Icon, children, onClick, disabled, tone }) {
-  return (
-    <motion.button
-      whileHover={disabled ? {} : { scale: 1.03 }} whileTap={disabled ? {} : { scale: .97 }}
-      onClick={onClick} disabled={disabled}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px',
-        borderRadius: 9, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? .5 : 1,
-        border: `1px solid ${tone || 'var(--border-strong)'}`, background: 'var(--bg-card)',
-        color: tone || 'var(--text-secondary)', fontSize: '.74rem', fontWeight: 700,
-      }}>
-      {Icon && <Icon size={13} strokeWidth={2.2} />}
-      {children}
-    </motion.button>
-  );
 }
 
 /**
@@ -877,6 +807,7 @@ function TabConfig() {
 
 const TABS = [
   { v: 'stats',  l: 'Stats',        Icon: BarChart3 },
+  { v: 'live',   l: 'En ligne',     Icon: Radio },
   { v: 'users',  l: 'Utilisateurs', Icon: UsersIcon },
   { v: 'groups', l: 'Groupes',      Icon: MessageSquare },
   { v: 'themes', l: 'Thèmes',       Icon: Palette },
@@ -961,6 +892,7 @@ export default function DevPanel({ onClose, userXp, onUnlockAll }) {
         {/* Body */}
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '1.1rem 1.3rem' }}>
           {tab === 'stats' && <TabStats />}
+          {tab === 'live' && <DevLive />}
           {tab === 'users' && <TabUsers />}
           {tab === 'groups' && <TabGroups />}
           {tab === 'themes' && (

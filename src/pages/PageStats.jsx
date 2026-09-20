@@ -1,9 +1,10 @@
 /**
  * PageStats — Personal stats, badges, presence and leaderboard
  * --------------------------------------------------------------------------
- * Reads `users/{uid}/data/main` for the player's XP/level/streak/focus and
- * subject counters, the realtime `presence` node for who's online, and the
- * `leaderboard` collection for rankings.
+ * Reads `users/{uid}/data/main` once and hands it to <StatsOverview>, the
+ * single opening card (week, level & XP, totals). Who is online lives in its
+ * own <PresenceCard>; this page keeps the badges and the `leaderboard`
+ * rankings.
  *
  * SCALABILITY NOTE: the leaderboard and the total-users count read the whole
  * `leaderboard` collection client-side. That's fine at the current scale; at
