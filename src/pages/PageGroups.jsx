@@ -32,7 +32,7 @@ import { startServerClock, serverNow } from '../lib/serverClock';
 import { setMembership } from '../focus/groupFocus';
 import { useGroupSession, useLiveGroupSessions } from '../focus/useGroupSession';
 import { bankMyGroupSession } from '../lib/groupSessionBank';
-import { GroupSessionBar, SessionFullscreen, NewSessionModal } from '../components/GroupSessionPanel';
+import { GroupSessionBar, SessionSpotlight, SessionFullscreen, NewSessionModal } from '../components/GroupSessionPanel';
 import { ShareDeckModal, DeckBubble, ImportDeckModal } from '../components/FlashcardShare';
 import { cardKey, MAX_DECK_CARDS } from '../lib/flashcardDeck';
 import { isDocsAvailable, shareDocToGroup } from '../lib/docs';
@@ -1292,6 +1292,21 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
         if (isAtBottom.current) setUnread(0);
       }}
         style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 1, scrollbarWidth: 'thin', scrollbarColor: 'var(--border) transparent' }}>
+        {/* The running session, impossible to scroll past */}
+        <AnimatePresence>
+          {sessionVisible && sessionPhase.phase !== 'done' && (
+            <SessionSpotlight
+              session={liveSession}
+              phase={sessionPhase.phase}
+              round={sessionPhase.round}
+              leftMs={sessionPhase.leftMs}
+              paused={!!liveSession.pausedAt}
+              joined={joinedLiveSession}
+              onJoin={() => enterSession(liveSession)}
+              onOpen={() => setSessionFullscreen(true)} />
+          )}
+        </AnimatePresence>
+
         {hasMore && messages.length > 0 && (
           <button onClick={loadOlder}
             style={{ alignSelf: 'center', margin: '2px 0 10px', padding: '5px 14px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-muted)', fontSize: '.72rem', cursor: 'pointer' }}>

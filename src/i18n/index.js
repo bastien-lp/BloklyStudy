@@ -1679,6 +1679,7 @@ const fr = {
     errGeneric: 'Ça n’a pas marché. Réessaie dans un instant.',
   },
   groups: {
+    sessionWaitingStart: "Salle d'attente · en attente du départ",
     document: 'Document',
     justNow: "À l'instant",
     poll: 'Sondage',
@@ -3615,6 +3616,7 @@ const en = {
     errGeneric: 'That did not work. Try again in a moment.',
   },
   groups: {
+    sessionWaitingStart: "Waiting room · waiting for the start",
     document: 'Document',
     justNow: 'Just now',
     poll: 'Poll',
@@ -4998,6 +5000,7 @@ const es = {
     monthNoBlockDay: 'Ningún bloque este día.',
   },
   groups: {
+    sessionWaitingStart: "Sala de espera · esperando el inicio",
     document: "Documento",
     pollVoters_one: "{count} voto",
     pollVoters_other: "{count} votos",
@@ -6932,6 +6935,7 @@ const de = {
     monthNoBlockDay: 'Kein Block an diesem Tag.',
   },
   groups: {
+    sessionWaitingStart: "Warteraum · Start steht aus",
     document: "Dokument",
     pollVoters_one: "{count} Stimme",
     pollVoters_other: "{count} Stimmen",

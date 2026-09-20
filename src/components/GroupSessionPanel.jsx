@@ -4,6 +4,7 @@
  * Three pieces:
  *   - <NewSessionModal>  : the host configures work / break / rounds + title
  *   - <GroupSessionBar>  : the sticky live bar above the conversation
+ *   - <SessionSpotlight> : the floating reminder in the middle of the chat
  *   - <SessionFullscreen>: the immersive view, same dial as the study timer
  *
  * The countdown is derived from the session's absolute timestamps against the
@@ -245,8 +246,8 @@ export function GroupSessionBar({
     <motion.div
       initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
       style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
-        padding: '10px 12px', borderBottom: '1px solid var(--border)',
-        background: 'var(--bg-modal)' }}>
+        padding: '12px 14px', borderBottom: `1px solid ${color}55`, borderLeft: `4px solid ${color}`,
+        background: `linear-gradient(90deg, ${color}1f, var(--bg-modal) 60%)` }}>
 
       {/* Dial + remaining time */}
       <div style={{ position: 'relative', flexShrink: 0 }}>
@@ -261,7 +262,14 @@ export function GroupSessionBar({
       {/* Identity of the session */}
       <div style={{ flex: 1, minWidth: 130 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '.78rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+          {!over && (
+            <motion.span aria-hidden="true"
+              animate={paused ? {} : { opacity: [1, .35, 1], scale: [1, .82, 1] }}
+              transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+              style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0,
+                boxShadow: `0 0 8px ${color}` }} />
+          )}
+          <span style={{ fontSize: '.86rem', fontWeight: 800, color: 'var(--text-primary)' }}>
             {session.title || t('groups.sessionLive')}
           </span>
           <span style={{ fontSize: '.6rem', fontWeight: 800, padding: '2px 7px', borderRadius: 20,
@@ -303,6 +311,62 @@ export function GroupSessionBar({
           <Button size="sm" variant="primary" icon={Users} onClick={onJoin}>{t('groups.sessionJoin')}</Button>
         )}
       </div>
+    </motion.div>
+  );
+}
+
+/**
+ * The floating reminder, sitting in the middle of the conversation.
+ *
+ * The bar at the top of the room was easy to scroll past — especially on a
+ * phone, where the chat fills the screen. This one stays centred over the
+ * messages while a session runs, says how long is left, and carries the one
+ * action that matters: join it, or open it full screen.
+ */
+export function SessionSpotlight({ session, phase, round, leftMs, paused, joined, onJoin, onOpen }) {
+  const { t } = useTranslation();
+  if (!session || phase === 'done') return null;
+
+  const color = phaseColor(phase, paused);
+  const waiting = phase === 'lobby';
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -10, scale: .96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -10 }}
+      transition={{ duration: .25, ease: 'easeOut' }}
+      style={{ position: 'sticky', top: 2, zIndex: 4, alignSelf: 'center', maxWidth: '100%',
+        display: 'flex', alignItems: 'center', gap: 12, padding: '9px 10px 9px 14px', marginBottom: 8,
+        borderRadius: 999, border: `1px solid ${color}`, background: 'var(--bg-modal)',
+        backdropFilter: 'blur(10px)', boxShadow: `0 10px 26px -14px ${color}, 0 2px 10px rgba(0,0,0,.25)` }}>
+
+      <motion.span aria-hidden="true"
+        animate={paused ? {} : { opacity: [1, .3, 1], scale: [1, .8, 1] }}
+        transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+        style={{ width: 9, height: 9, borderRadius: '50%', background: color, flexShrink: 0, boxShadow: `0 0 10px ${color}` }} />
+
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: '.76rem', fontWeight: 800, color: 'var(--text-primary)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 220 }}>
+          {session.title || t('groups.sessionLive')}
+        </div>
+        <div style={{ fontSize: '.64rem', color: 'var(--text-muted)' }}>
+          {waiting
+            ? t('groups.sessionWaitingStart')
+            : `${paused ? t('groups.sessionPausedBy') : phaseLabel(phase, t)} · ${t('groups.sessionRoundOf', { round, total: session.rounds })}`}
+        </div>
+      </div>
+
+      {!waiting && (
+        <span style={{ fontSize: '.92rem', fontWeight: 800, fontFamily: 'monospace', color, flexShrink: 0,
+          fontVariantNumeric: 'tabular-nums' }}>
+          {fmtLeft(leftMs)}
+        </span>
+      )}
+
+      <Button size="sm" variant="primary" icon={joined ? Maximize2 : Users}
+        onClick={joined ? onOpen : onJoin}>
+        {joined ? t('groups.sessionFullscreen') : t('groups.sessionJoin')}
+      </Button>
     </motion.div>
   );
 }
