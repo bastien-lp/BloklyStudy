@@ -6,17 +6,21 @@
  * same inputs always give the same plan.
  *
  * Rules, in plain words:
- *   1. Every chapter not marked done gets one session. Chapters rated weak in
- *      Confidence (1–2★) get a second session, at least MIN_SPACING_DAYS later.
+ *   1. Every chapter the student left in the plan gets one session. Chapters
+ *      rated weak in Confidence (1–2★) get a second session, at least
+ *      MIN_SPACING_DAYS later, unless `weakExtra` is off. Chapters already
+ *      marked done are left out unless `includeDone` asks for them — mastered
+ *      is not the same as not worth seeing again — and they then come last.
  *   2. Each chapter must fit before its subject's exam (the day before at the
  *      latest); subjects without an exam date only need to fit in the period.
  *      Earliest deadline first, weak chapters first among equals.
  *   3. A general-review session is placed before each exam, on the last day
  *      available before it (the eve when that day was picked).
  *   4. Sessions go into free time only: never over an existing block or a
- *      timed calendar event, within the chosen hours, with a short break
- *      between sessions, at most `dailyHours` per day, and subjects are
- *      alternated within a day whenever there is a choice.
+ *      timed calendar event, inside one of the chosen time windows, with a
+ *      short break between sessions, at most `dailyHours` per day, and
+ *      subjects are alternated within a day whenever there is a choice.
+ *   4b. Nothing is placed before `startDate` (today by default).
  *   5. What cannot fit is reported (`unscheduled`), never silently dropped.
  *
  * The result also carries `explain`: how many chapters were counted, how many
@@ -106,12 +110,29 @@ function firstFreeSlot(busy, from, to, dur) {
 export function generateRevisionPlan({ subjects, blocks = [], events = [], options, labels, now = new Date() }) {
   const o = {
     weeks: 2, days: [true, true, true, true, true, false, false], dailyHours: 2,
-    startHour: 9, endHour: 19, sessionHours: 1.5, finalReview: true, subjectIds: null, ...options,
+    startHour: 9, endHour: 19, windows: null, sessionHours: 1.5, finalReview: true,
+    subjectIds: null, chapters: null, startDate: null, weakExtra: true, includeDone: false,
+    ...options,
   };
+
+  // Time windows. A single start/end pair is still accepted (that is what the
+  // first version took), and becomes the one window.
+  const windows = (Array.isArray(o.windows) && o.windows.length ? o.windows : [{ from: o.startHour, to: o.endHour }])
+    .map(w => ({ from: Math.max(0, Number(w.from) || 0), to: Math.min(24, Number(w.to) || 0) }))
+    .filter(w => w.to > w.from)
+    .sort((a, b) => a.from - b.from);
+  const dayOpen = windows.length ? windows[0].from : 0;
+
   const today = midnight(now);
-  const horizonEnd = addDays(today, o.weeks * 7);           // exclusive
+  // Nothing before the chosen start date, and never before today.
+  const startDay = (() => {
+    const picked = o.startDate instanceof Date ? midnight(o.startDate) : parseExamDate(o.startDate);
+    return picked && picked > today ? picked : today;
+  })();
+  const horizonEnd = addDays(startDay, o.weeks * 7);        // exclusive
   const thisMonday = mondayOf(now);
   const nowHour = now.getHours() + now.getMinutes() / 60;
+  const startsToday = startDay.getTime() === today.getTime();
   const wanted = o.subjectIds ? new Set(o.subjectIds.map(String)) : null;
   const chosen = asArray(subjects).filter(s => !wanted || wanted.has(String(s.id)));
 
@@ -122,19 +143,25 @@ export function generateRevisionPlan({ subjects, blocks = [], events = [], optio
   const perSubject = [];
   for (const s of chosen) {
     const exam = parseExamDate(s.date);
-    const examInPeriod = exam && exam >= today && exam < horizonEnd;
+    const examInPeriod = exam && exam >= startDay && exam < horizonEnd;
     // Chapters must be done by the day before the exam (or by the end of the period).
     const deadline = examInPeriod ? addDays(exam, -1) : addDays(horizonEnd, -1);
+    // Which chapters of this subject the student left in the plan (null = all).
+    const picked = o.chapters?.[String(s.id)] ?? o.chapters?.[s.id] ?? null;
     const chapters = asArray(s.chapters).length
       ? asArray(s.chapters)
       : Array.from({ length: Number(s.chaps) || 0 }, (_, i) => ({ name: '', status: i < (Number(s.chapsDone) || 0) ? 'done' : 'todo' }));
     chapters.forEach((c, i) => {
-      if (c?.status === 'done') return;
+      if (Array.isArray(picked) && !picked.includes(i)) return;
+      const done = c?.status === 'done';
+      if (done && !o.includeDone) return;
       const conf = Number(asArray(s.conf)[i]) || 0;
       const weak = conf > 0 && conf <= 2;
-      const base = { subject: s, chapter: i, name: c?.name || '', deadline, weak, conf };
+      const base = { subject: s, chapter: i, name: c?.name || '', deadline, weak, conf, done };
       items.push({ ...base, pass: 1 });
-      if (weak) items.push({ ...base, pass: 2 });
+      // A second pass is for a shaky chapter still being learned, never for a
+      // chapter brought back just to keep it fresh.
+      if (weak && o.weakExtra && !done) items.push({ ...base, pass: 2 });
     });
     if (o.finalReview && examInPeriod) finals.push({ subject: s, exam });
 
@@ -144,15 +171,27 @@ export function generateRevisionPlan({ subjects, blocks = [], events = [], optio
       name: s.name,
       color: s.color || null,
       chapters: new Set(mine.map(it => it.chapter)).size,
-      weak: new Set(mine.filter(it => it.weak).map(it => it.chapter)).size,
+      weak: new Set(mine.filter(it => it.weak && !it.done).map(it => it.chapter)).size,
+      revisited: new Set(mine.filter(it => it.done).map(it => it.chapter)).size,
       sessions: mine.length,
       placed: 0,
       exam: examInPeriod ? exam : null,
       deadline,
     });
   }
-  // Earliest deadline first; weak chapters first; then chapter order.
-  items.sort((a, b) => a.deadline - b.deadline || (b.weak - a.weak) || (a.conf - b.conf) || a.chapter - b.chapter || a.pass - b.pass);
+  // Earliest deadline first; chapters still to learn before refreshers; weak
+  // chapters first; then chapter order.
+  items.sort((a, b) => a.deadline - b.deadline || (a.done - b.done) || (b.weak - a.weak)
+    || (a.conf - b.conf) || a.chapter - b.chapter || a.pass - b.pass);
+
+  /** What the block says it is about: the chapter, and why it is there. */
+  const chapterTask = (item, l) => {
+    const head = l.chapter ? l.chapter.replace('{n}', item.chapter + 1) : `Ch. ${item.chapter + 1}`;
+    const parts = [item.name ? `${head} · ${item.name}` : head];
+    if (item.pass === 2) parts.push(l.secondPass);
+    else if (item.done) parts.push(l.refresher || l.secondPass);
+    return parts.join(' · ');
+  };
 
   // ── 2. Day by day ──
   // Where each general review goes: the eve of the exam when that day is one
@@ -160,8 +199,8 @@ export function generateRevisionPlan({ subjects, blocks = [], events = [], optio
   const finalsByDay = new Map();
   for (const f of finals) {
     let d = addDays(f.exam, -1);
-    while (d >= today && !o.days[(d.getDay() + 6) % 7]) d = addDays(d, -1);
-    if (d < today) continue;                       // no day left: reported below
+    while (d >= startDay && !o.days[(d.getDay() + 6) % 7]) d = addDays(d, -1);
+    if (d < startDay) continue;                    // no day left: reported below
     finalsByDay.set(d.getTime(), [...(finalsByDay.get(d.getTime()) || []), f]);
   }
 
@@ -170,9 +209,15 @@ export function generateRevisionPlan({ subjects, blocks = [], events = [], optio
   let busyBlocks = 0;
   let busyEvents = 0;
   const firstPassDay = new Map(); // "subj_chapter" → day index of the first session
-  const placeOn = (day, dayBusy, dur, start) => {
-    const from = Math.max(o.startHour, start);
-    return firstFreeSlot(dayBusy, from, o.endHour, dur);
+  /** Earliest free slot of the day, looking through each window in turn. */
+  const placeOn = (day, dayBusy, dur, cursor) => {
+    for (const w of windows) {
+      const from = Math.max(w.from, cursor);
+      if (from + dur > w.to + 1e-9) continue;
+      const hour = firstFreeSlot(dayBusy, from, w.to, dur);
+      if (hour != null) return hour;
+    }
+    return null;
   };
   const makeBlock = (day, hour, subject, chapterIdx, task) => ({
     type: 'rev', subj: subject.id, label: '', color: subject.color || '#4A90D9',
@@ -182,14 +227,16 @@ export function generateRevisionPlan({ subjects, blocks = [], events = [], optio
     dateStr: plannerDateStr(day), auto: true,
   });
 
-  for (let day = today, n = 0; day < horizonEnd; day = addDays(day, 1), n++) {
+  for (let day = startDay, n = 0; day < horizonEnd; day = addDays(day, 1), n++) {
     if (!o.days[(day.getDay() + 6) % 7]) continue;
     daysAvailable++;
     busyBlocks += busyHours(day, blocks, [], thisMonday).length;
     busyEvents += busyHours(day, [], events, thisMonday).length;
     const dayBusy = busyHours(day, [...blocks, ...planned], events, thisMonday);
     let used = 0;
-    let cursor = n === 0 ? Math.max(o.startHour, Math.ceil((nowHour + 0.5) / SLOT) * SLOT) : o.startHour;
+    // Today, nothing starts in the next half hour; a later start day opens at
+    // the first window.
+    let cursor = (n === 0 && startsToday) ? Math.max(dayOpen, Math.ceil((nowHour + 0.5) / SLOT) * SLOT) : dayOpen;
     let lastSubject = null;
 
     // A day carrying a general review keeps the time for it.
@@ -204,7 +251,7 @@ export function generateRevisionPlan({ subjects, blocks = [], events = [], optio
       const pick = eligible.find(it => String(it.subject.id) !== lastSubject) || eligible[0];
       const hour = placeOn(day, dayBusy, o.sessionHours, cursor);
       if (hour == null) break;
-      const task = pick.pass === 2 ? `${pick.name || ''} · ${labels.secondPass}`.replace(/^ · /, '') : pick.name;
+      const task = chapterTask(pick, labels);
       planned.push(makeBlock(day, hour, pick.subject, pick.chapter, task));
       dayBusy.push([hour, hour + o.sessionHours]);
       used += o.sessionHours;
@@ -252,8 +299,11 @@ export function generateRevisionPlan({ subjects, blocks = [], events = [], optio
     hours: planned.reduce((h, b) => h + b.dur, 0),
     explain: {
       // what was counted
-      chapters: items.filter(it => it.pass === 1).length,
+      chapters: items.filter(it => it.pass === 1 && !it.done).length,
       weakChapters: items.filter(it => it.pass === 2).length,
+      revisited: items.filter(it => it.pass === 1 && it.done).length,
+      startDay,
+      windows,
       sessionsNeeded,
       sessionsPlaced: planned.length,
       finalReviews: finals.length,

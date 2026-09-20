@@ -22,15 +22,25 @@
 
 import { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import { Wand2, X, AlertTriangle, Trash2, CalendarPlus, BookOpen, HeartCrack, GraduationCap, CalendarX, Info } from 'lucide-react';
+import {
+  Wand2, X, AlertTriangle, Trash2, CalendarPlus, BookOpen, HeartCrack, GraduationCap,
+  CalendarX, Info, Plus, Minus, ChevronDown, ChevronRight, RotateCcw,
+} from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { generateRevisionPlan, pendingAutoBlocks } from '../lib/autoPlan';
 import { formatDuration } from '../lib/duration';
 import { Button } from './ui';
 
 const WEEK_OPTIONS = [1, 2, 3, 4, 6, 8];
+/** A new window is added here when there is room after the last one. */
+const NEW_WINDOW = { from: 14, to: 18 };
 const SESSION_OPTIONS = [0.75, 1, 1.5, 2];
 const HOURS = Array.from({ length: 19 }, (_, i) => i + 6); // 6h … 24h
+
+/** Local YYYY-MM-DD, what a date input reads and writes. */
+function dayValue(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 function clock(h, lang) {
   const hh = Math.floor(h);
@@ -71,22 +81,72 @@ export default function AutoPlanModal({ subjects, blocks, events, onApply, onRem
     weeks: 2,
     days: [true, true, true, true, true, false, false],
     dailyHours: 2,
-    startHour: 9,
-    endHour: 19,
+    windows: [{ from: 9, to: 12 }, { from: 14, to: 19 }],
     sessionHours: 1.5,
     finalReview: true,
+    weakExtra: true,
+    includeDone: false,
+    startDate: dayValue(now),
     subjectIds: candidates.map(s => String(s.id)),
+    // null for a subject = every chapter of it; an array = the chosen ones.
+    chapters: {},
   });
+  // Which subject has its chapter list open.
+  const [openSubject, setOpenSubject] = useState(null);
   const [replace, setReplace] = useState(true);
   const [showRules, setShowRules] = useState(true);
   const set = (k, v) => setOpts(o => ({ ...o, [k]: v }));
+
+  /** The chapters of a subject, in the shape the picker needs. */
+  function chaptersOf(subject) {
+    const list = Array.isArray(subject.chapters) && subject.chapters.length
+      ? subject.chapters
+      : Array.from({ length: Number(subject.chaps) || 0 }, (_, i) => ({ name: '', status: i < (Number(subject.chapsDone) || 0) ? 'done' : 'todo' }));
+    return list.map((c, i) => ({ index: i, name: c?.name || '', done: c?.status === 'done', conf: Number(subject.conf?.[i]) || 0 }));
+  }
+
+  /** Chapters of a subject currently in the plan (null = all of them). */
+  const pickedOf = id => opts.chapters[String(id)] ?? null;
+
+  function toggleChapter(subject, index) {
+    const all = chaptersOf(subject).map(c => c.index);
+    const current = pickedOf(subject.id) ?? all;
+    const next = current.includes(index) ? current.filter(i => i !== index) : [...current, index].sort((a, b) => a - b);
+    setOpts(o => ({
+      ...o,
+      chapters: { ...o.chapters, [String(subject.id)]: next.length === all.length ? null : next },
+    }));
+  }
+
+  function setAllChapters(subject, on) {
+    setOpts(o => ({ ...o, chapters: { ...o.chapters, [String(subject.id)]: on ? null : [] } }));
+  }
+
+  function setWindow(i, key, value) {
+    setOpts(o => ({
+      ...o,
+      windows: o.windows.map((w, j) => {
+        if (j !== i) return w;
+        const next = { ...w, [key]: value };
+        // Keep the pair valid without arguing with the student about it.
+        if (key === 'from') next.to = Math.max(next.to, value + 1);
+        else next.from = Math.min(next.from, value - 1);
+        return next;
+      }),
+    }));
+  }
 
   const plan = useMemo(() => {
     const pendingSet = new Set(pending);
     const base = replace ? blocks.filter(b => !pendingSet.has(b)) : blocks;
     return generateRevisionPlan({
       subjects, blocks: base, events, now, options: opts,
-      labels: { finalReview: t('autoPlan.finalReview'), secondPass: t('autoPlan.secondPass') },
+      labels: {
+        finalReview: t('autoPlan.finalReview'),
+        secondPass: t('autoPlan.secondPass'),
+        refresher: t('autoPlan.refresher'),
+        chapter: t('autoPlan.chapterShort', { n: '{n}' }),
+      },
     });
   }, [subjects, blocks, events, now, opts, replace, pending, t]);
 
@@ -174,18 +234,45 @@ export default function AutoPlanModal({ subjects, blocks, events, onApply, onRem
                 </select>
               </div>
               <div>
-                <label style={label} htmlFor="ap-from">{t('autoPlan.between')}</label>
-                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                  <select id="ap-from" aria-label={t('autoPlan.startHour')} style={field} value={opts.startHour}
-                    onChange={e => { const v = Number(e.target.value); setOpts(o => ({ ...o, startHour: v, endHour: Math.max(o.endHour, v + 1) })); }}>
-                    {HOURS.slice(0, -1).map(h => <option key={h} value={h}>{clock(h, lang)}</option>)}
-                  </select>
-                  <select aria-label={t('autoPlan.endHour')} style={field} value={opts.endHour}
-                    onChange={e => { const v = Number(e.target.value); setOpts(o => ({ ...o, endHour: v, startHour: Math.min(o.startHour, v - 1) })); }}>
-                    {HOURS.slice(1).map(h => <option key={h} value={h}>{clock(h, lang)}</option>)}
-                  </select>
-                </div>
+                <label style={label} htmlFor="ap-start">{t('autoPlan.startDate')}</label>
+                <input id="ap-start" type="date" style={field} value={opts.startDate}
+                  min={dayValue(now)}
+                  onChange={e => set('startDate', e.target.value || dayValue(now))} />
               </div>
+            </div>
+
+            {/* Time windows */}
+            <div>
+              <div style={label}>{t('autoPlan.windows')}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {opts.windows.map((w, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <select aria-label={t('autoPlan.startHour')} style={{ ...field, width: 'auto', flex: 1 }} value={w.from}
+                      onChange={e => setWindow(i, 'from', Number(e.target.value))}>
+                      {HOURS.slice(0, -1).map(h => <option key={h} value={h}>{clock(h, lang)}</option>)}
+                    </select>
+                    <span aria-hidden="true" style={{ color: 'var(--text-muted)', fontSize: '.8rem' }}>–</span>
+                    <select aria-label={t('autoPlan.endHour')} style={{ ...field, width: 'auto', flex: 1 }} value={w.to}
+                      onChange={e => setWindow(i, 'to', Number(e.target.value))}>
+                      {HOURS.slice(1).map(h => <option key={h} value={h}>{clock(h, lang)}</option>)}
+                    </select>
+                    <button type="button" aria-label={t('autoPlan.removeWindow')} title={t('autoPlan.removeWindow')}
+                      disabled={opts.windows.length < 2}
+                      onClick={() => set('windows', opts.windows.filter((_, j) => j !== i))}
+                      style={{ display: 'flex', padding: 7, borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-card)',
+                        color: 'var(--text-muted)', cursor: opts.windows.length < 2 ? 'not-allowed' : 'pointer', opacity: opts.windows.length < 2 ? .4 : 1 }}>
+                      <Minus size={13} />
+                    </button>
+                  </div>
+                ))}
+                <button type="button" onClick={() => set('windows', [...opts.windows, NEW_WINDOW])}
+                  style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 99,
+                    border: '1px dashed var(--border-strong)', background: 'transparent', color: 'var(--text-secondary)',
+                    fontSize: '.72rem', fontWeight: 600, cursor: 'pointer' }}>
+                  <Plus size={13} /> {t('autoPlan.addWindow')}
+                </button>
+              </div>
+              <div style={{ fontSize: '.66rem', color: 'var(--text-muted)', marginTop: 5 }}>{t('autoPlan.windowsHint')}</div>
             </div>
 
             <div>
@@ -200,25 +287,92 @@ export default function AutoPlanModal({ subjects, blocks, events, onApply, onRem
 
             <div>
               <div style={label}>{t('autoPlan.subjects')}</div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {candidates.map(s => {
                   const on = opts.subjectIds.includes(String(s.id));
+                  const open = openSubject === String(s.id);
+                  const chapters = chaptersOf(s);
+                  const picked = pickedOf(s.id);
+                  const inPlan = chapters.filter(c => (!picked || picked.includes(c.index)) && (!c.done || opts.includeDone)).length;
                   return (
-                    <button key={s.id} type="button" aria-pressed={on} style={chip(on)}
-                      onClick={() => set('subjectIds', on ? opts.subjectIds.filter(x => x !== String(s.id)) : [...opts.subjectIds, String(s.id)])}>
-                      <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', background: s.color || 'var(--accent)' }} />
-                      {s.name}
-                      {s.date && <span style={{ opacity: .7, fontSize: '.64rem' }}>{formatDate(new Date(`${s.date}T12:00:00`), { day: 'numeric', month: 'short' })}</span>}
-                    </button>
+                    <div key={s.id} style={{ borderRadius: 12, background: on ? 'var(--bg-card)' : 'transparent',
+                      border: `1px solid ${on ? 'var(--border)' : 'transparent'}` }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px' }}>
+                        <button type="button" aria-pressed={on} style={{ ...chip(on), flex: 1, justifyContent: 'flex-start', minWidth: 0 }}
+                          onClick={() => set('subjectIds', on ? opts.subjectIds.filter(x => x !== String(s.id)) : [...opts.subjectIds, String(s.id)])}>
+                          <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: s.color || 'var(--accent)' }} />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                          {s.date && <span style={{ opacity: .7, fontSize: '.64rem', flexShrink: 0 }}>{formatDate(new Date(`${s.date}T12:00:00`), { day: 'numeric', month: 'short' })}</span>}
+                        </button>
+                        {on && chapters.length > 0 && (
+                          <button type="button" onClick={() => setOpenSubject(open ? null : String(s.id))}
+                            aria-expanded={open}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 9px', borderRadius: 99,
+                              border: 'none', background: 'transparent', color: 'var(--text-muted)', fontSize: '.68rem', fontWeight: 600, cursor: 'pointer' }}>
+                            {t('autoPlan.chaptersCount', { count: inPlan, total: chapters.length })}
+                            {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                          </button>
+                        )}
+                      </div>
+
+                      {on && open && (
+                        <div style={{ padding: '0 10px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button type="button" onClick={() => setAllChapters(s, true)}
+                              style={{ ...chip(false), fontSize: '.66rem' }}>{t('autoPlan.selectAll')}</button>
+                            <button type="button" onClick={() => setAllChapters(s, false)}
+                              style={{ ...chip(false), fontSize: '.66rem' }}>{t('autoPlan.selectNone')}</button>
+                          </div>
+                          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                            {chapters.map(c => {
+                              const active = !picked || picked.includes(c.index);
+                              const ignored = c.done && !opts.includeDone;
+                              return (
+                                <button key={c.index} type="button" aria-pressed={active}
+                                  onClick={() => toggleChapter(s, c.index)}
+                                  title={c.name || undefined}
+                                  style={{ ...chip(active), opacity: ignored ? .45 : 1, maxWidth: 190 }}>
+                                  {c.done && <RotateCcw size={11} aria-hidden="true" style={{ flexShrink: 0 }} />}
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {t('autoPlan.chapterShort', { n: c.index + 1 })}{c.name ? ` · ${c.name}` : ''}
+                                  </span>
+                                  {c.conf > 0 && c.conf <= 2 && !c.done && (
+                                    <HeartCrack size={11} aria-hidden="true" style={{ flexShrink: 0, color: 'var(--warning)' }} />
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>
             </div>
 
-            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: '.76rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
-              <input type="checkbox" checked={opts.finalReview} onChange={e => set('finalReview', e.target.checked)} style={{ accentColor: 'var(--accent)' }} />
-              {t('autoPlan.finalReviewOption')}
-            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '.76rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={opts.weakExtra} onChange={e => set('weakExtra', e.target.checked)}
+                  style={{ accentColor: 'var(--accent)', marginTop: 2 }} />
+                <span>
+                  {t('autoPlan.weakExtraOption')}
+                  <span style={{ display: 'block', fontSize: '.66rem', color: 'var(--text-muted)' }}>{t('autoPlan.weakExtraHint')}</span>
+                </span>
+              </label>
+              <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '.76rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={opts.includeDone} onChange={e => set('includeDone', e.target.checked)}
+                  style={{ accentColor: 'var(--accent)', marginTop: 2 }} />
+                <span>
+                  {t('autoPlan.includeDoneOption')}
+                  <span style={{ display: 'block', fontSize: '.66rem', color: 'var(--text-muted)' }}>{t('autoPlan.includeDoneHint')}</span>
+                </span>
+              </label>
+              <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: '.76rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={opts.finalReview} onChange={e => set('finalReview', e.target.checked)} style={{ accentColor: 'var(--accent)' }} />
+                {t('autoPlan.finalReviewOption')}
+              </label>
+            </div>
 
             {pending.length > 0 && (
               <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: '.76rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
@@ -249,6 +403,9 @@ export default function AutoPlanModal({ subjects, blocks, events, onApply, onRem
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(128px, 1fr))', gap: 7 }}>
                 <Fact icon={BookOpen} value={x.chapters} label={t('autoPlan.factChapters', { count: x.chapters })} />
+                {x.revisited > 0 && (
+                  <Fact icon={RotateCcw} value={x.revisited} label={t('autoPlan.factRevisited', { count: x.revisited })} tone="var(--success, #27AE60)" />
+                )}
                 <Fact icon={HeartCrack} value={x.weakChapters} label={t('autoPlan.factWeak', { count: x.weakChapters })} tone="var(--warning)" />
                 <Fact icon={GraduationCap} value={x.exams.length} label={t('autoPlan.factExams', { count: x.exams.length })} />
                 <Fact icon={CalendarX} value={x.busyBlocks + x.busyEvents} label={t('autoPlan.factBusy', { count: x.busyBlocks + x.busyEvents })} tone="var(--text-muted)" />
