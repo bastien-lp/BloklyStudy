@@ -10,6 +10,7 @@
  *   users/{uid}/data/main    : xp, level, todayMins, todaySess, statsDay,
  *                              streak, lastStudyDay, totalFocusHours, leaves,
  *                              sessions (last 30)
+ *   groupGroves/{groupId}/{uid}  : the group grove, in the Realtime Database
  *   users/{uid}/data/reserve : bamboo (the garden), studyTime[subjId],
  *                              energy, lastStudyDay
  *
@@ -23,6 +24,7 @@ import { dayKey, daysBetween } from './dayKeys';
 import { syncLeaderboard } from './leaderboard';
 import { reportSaveError } from './notify';
 import { readGarden, writeGarden, addMinutes } from './bambooGarden';
+import { waterMyGroves } from './groupGrove';
 
 /** XP earned for a number of focused seconds (10 XP per full minute). */
 export function computeXP(secs) {
@@ -45,12 +47,15 @@ export async function bankFocusSession(uid, secs, xp, { subjId = '', mode = 'fre
   const mins = Math.floor(secs / 60);
   const today = dayKey();
   const mainRef = doc(db, 'users', uid, 'data', 'main');
+  // Read from the main document and used further down, for the group groves.
+  let myPseudo = '';
 
   try {
     // Read first: the daily counters and the streak both depend on which day
     // the previous session fell on, so they can't be blind increments.
     const snap = await getDoc(mainRef);
     const d = snap.exists() ? snap.data() : {};
+    myPseudo = d.profile?.pseudo || '';
 
     // Daily tiles roll over whenever the stored day is not today.
     const sameDay = d.statsDay === today;
@@ -101,5 +106,13 @@ export async function bankFocusSession(uid, secs, xp, { subjId = '', mode = 'fre
       if (subjId) patch.studyTime = { ...(d.studyTime || {}), [subjId]: (d.studyTime?.[subjId] || 0) + mins };
       await setDoc(ref, patch, { merge: true });
     } catch (e) { reportSaveError(e, `${context} — reserve save`); }
+  }
+
+  // Finally, the groves of my study groups (lib/groupGrove.js). Last on
+  // purpose and deliberately SILENT: the session is already saved, so a group
+  // that cannot be read or written — rules not published, offline, no group at
+  // all — must cost nothing and warn about nothing.
+  if (mins > 0) {
+    try { await waterMyGroves(uid, mins, myPseudo); } catch { /* optional feature */ }
   }
 }

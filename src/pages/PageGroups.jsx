@@ -14,7 +14,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, rtdb } from '../firebase/config';
 import { ref as dbRef, onValue, set, remove, onDisconnect } from 'firebase/database';
-import { Square, FolderOpen, Trophy } from 'lucide-react';
+import { Square, FolderOpen, Trophy, Trees } from 'lucide-react';
 import UserProfileModal from '../components/UserProfileModal';
 import {
   collection, doc, getDoc, getDocs, setDoc, deleteDoc, addDoc,
@@ -43,6 +43,7 @@ import QuizSetupModal from '../components/quiz/QuizSetupModal';
 import LiveQuiz from '../components/quiz/LiveQuiz';
 import { subscribeQuiz, isQuizStale } from '../lib/groupQuiz';
 import { notifyGroup } from '../lib/notifications';
+import GroupGrove from '../components/GroupGrove';
 
 function generateCode() {
   return 'BLK-' + Math.random().toString(36).slice(2, 6).toUpperCase();
@@ -750,6 +751,7 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
   const [showQuizSetup, setShowQuizSetup] = useState(false); // live quiz: choose a deck
   const [showQuiz, setShowQuiz]           = useState(false); // live quiz: full-screen game
   const [quizLive, setQuizLive]           = useState(null);  // the group's running quiz (null if none / over)
+  const [showGrove, setShowGrove]         = useState(false); // the group's weekly grove
   const docsEnabled = isDocsAvailable();
   const [msgLimit, setMsgLimit]   = useState(40);   // pagination window (latest N)
   const [hasMore, setHasMore]     = useState(false);// whether older messages exist
@@ -1367,6 +1369,7 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
                 { icon: '🔗', label: t('groups.link'), action: () => { setShowLinkShare(true); setShowTools(false); } },
                 ...(docsEnabled ? [{ icon: <FolderOpen size={14} aria-hidden="true" />, label: t('groups.document'), action: () => { setShowDocPicker(true); setShowTools(false); } }] : []),
                 { icon: <Trophy size={14} aria-hidden="true" />, label: t('quiz.tool'), action: () => { openQuizTool(); setShowTools(false); } },
+                { icon: <Trees size={14} aria-hidden="true" />, label: t('grove.tool'), action: () => { setShowGrove(true); setShowTools(false); } },
                 { icon: '⏱', label: t('groups.sessionStart'), action: () => { setShowNewSession(true); setShowTools(false); } },
               ].map((tool, i) => (
                 <motion.button key={i} whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={tool.action}
@@ -1469,6 +1472,7 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
             }} />
         )}
         {showQuiz && <LiveQuiz user={user} groupId={group.id} pseudo={pseudo} onClose={() => setShowQuiz(false)} />}
+        {showGrove && <GroupGrove user={user} group={group} onClose={() => setShowGrove(false)} />}
         {showDocPicker && <GroupDocPicker user={user} groupId={group.id} onPick={sendDocHere} onClose={() => setShowDocPicker(false)} />}
         {showGroupDocs && (
           <GroupDocsPanel user={user} group={group} onClose={() => setShowGroupDocs(false)}
