@@ -18,18 +18,17 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { doc, getDoc, onSnapshot, collection, getDocs, getCountFromServer, query, orderBy, limit, where } from 'firebase/firestore';
-import { db, rtdb } from '../firebase/config';
-import { ref as dbRef, onValue } from 'firebase/database';
+import { db } from '../firebase/config';
 import UserProfileModal from '../components/UserProfileModal';
 import { BADGES } from '../data/badges';
-import { XP_LEVELS } from '../data/levels';
 import { useTranslation } from '../i18n';
 import { Zap, Crown, Medal } from 'lucide-react';
 import { GuidedTour, useGuidedTour, TourButton } from '../components/GuidedTour';
 import { dayKey, weekKey } from '../lib/dayKeys';
 import { reportSaveError } from '../lib/notify';
 import { resolveOwnPhoto } from '../lib/profilePhoto';
-import WeeklyRecap from '../components/WeeklyRecap';
+import StatsOverview from '../components/StatsOverview';
+import PresenceCard from '../components/PresenceCard';
 
 
 
@@ -463,13 +462,10 @@ function BadgesSection({ earnedBadges = [] }) {
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 export default function PageStats({ user, onOpenConv }) {
-  const { t, formatNumber } = useTranslation();
+  const { t } = useTranslation();
   const tour = useGuidedTour('stats');
   const [data, setData]           = useState(null);
   const [loading, setLoading]     = useState(true);
-  const [online, setOnline]       = useState(0);
-  const [othersOnline, setOthersOnline] = useState(0);
-  const [totalUsers, setTotalUsers] = useState(0);
 
   useEffect(() => {
     if (!user) return;
@@ -480,20 +476,6 @@ export default function PageStats({ user, onOpenConv }) {
     return unsub;
   }, [user]);
 
-  useEffect(() => {
-    const unsub = onValue(dbRef(rtdb, 'presence'), snap => {
-      // Everyone online, me included; "others" decides between the two messages.
-      const uids = Object.keys(snap.val() || {});
-      setOnline(uids.length);
-      setOthersOnline(uids.filter(uid => uid !== user?.uid).length);
-    }, () => {});
-    // Server-side aggregation: one billed read instead of one per player.
-    // (The previous version downloaded the whole collection just to count it.)
-    getCountFromServer(collection(db, 'leaderboard'))
-      .then(snap => setTotalUsers(snap.data().count))
-      .catch(() => {});
-    return () => unsub();
-  }, [user?.uid]);
 
   if (loading || !data) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '50vh' }}>
@@ -501,139 +483,20 @@ export default function PageStats({ user, onOpenConv }) {
     </div>
   );
 
-  const { xp = 0, streak = 0, todaySess = 0, todayMins = 0,
-    totalFocusHours = 0, earnedBadges = [], subjects = [] } = data;
-
-  // Level lookup that tolerates the 12 → 15 gap:
-  //  - current = highest defined level <= player's level
-  //  - next    = first defined level strictly greater (undefined when maxed)
-  const curDef  = [...XP_LEVELS].reverse().find(l => xp >= l.xpNeeded) || XP_LEVELS[0];
-  const nextDef = XP_LEVELS.find(l => l.xpNeeded > xp);
-  const xpInLvl = nextDef ? xp - curDef.xpNeeded : xp;
-  const xpNeeded = nextDef ? nextDef.xpNeeded - curDef.xpNeeded : 0;
-  const pct = nextDef ? Math.round(xpInLvl / xpNeeded * 100) : 100;
-
-  const totalBlocks = subjects.reduce((a, s) => a + (s.totalBlocks || 0), 0);
-  const doneBlocks  = subjects.reduce((a, s) => a + (s.doneBlocks || 0), 0);
-  const totalChaps  = subjects.reduce((a, s) => a + (s.chaps || 0), 0);
-  const doneChaps   = subjects.reduce((a, s) => a + (s.chapsDone || 0), 0);
-
-  const levelStats = [
-    { v: streak,    l: `🔥 ${t('stats.streak')}`,   u: t('stats.unitDays'),     c: '#F1C40F' },
-    { v: todaySess, l: `⏱ ${t('stats.sessions')}`,  u: t('stats.unitToday'),    c: '#4A90D9' },
-    { v: todayMins, l: `⏰ ${t('stats.focus')}`,     u: t('stats.unitMinToday'), c: 'var(--xp-color)' },
-    { v: Math.round(totalFocusHours * 10) / 10, l: `📊 ${t('stats.total')}`, u: t('stats.unitHours'), c: '#9B59B6' },
-  ];
-  const recapStats = [
-    { v: `${doneBlocks}/${totalBlocks}`, l: t('stats.blocksDone'), c: '#4A90D9' },
-    { v: `${totalBlocks > 0 ? Math.round(doneBlocks / totalBlocks * 100) : 0}%`, l: t('stats.completion'), c: '#27AE60' },
-    { v: `${doneChaps}/${totalChaps}`, l: t('stats.chaptersDone'), c: '#9B59B6' },
-    { v: subjects.length, l: t('stats.subjects'), c: '#F1C40F' },
-  ];
+  // Only the badge list is still read here: every other figure of the
+  // opening card is derived inside StatsOverview.
+  const { earnedBadges = [] } = data;
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       <TourButton onClick={tour.start} label={t('common.guidedTour')} />
 
-      {/* ── XP & Level ── */}
-      {/* ── Weekly recap ── */}
-      <WeeklyRecap data={data} />
+      {/* ── Week, level and totals, in one card ── */}
+      <StatsOverview data={data} />
 
-      <section data-tour="tour-stats-xp" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: '1.5rem' }}>
-        <h2 style={{ fontSize: '.9rem', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 16px' }}>🎮 {t('stats.levelTitle')}</h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 14 }}>
-          <div style={{ position: 'relative', width: 72, height: 72, flexShrink: 0 }}>
-            <svg width="72" height="72" viewBox="0 0 72 72" style={{ transform: 'rotate(-90deg)', position: 'absolute', inset: 0 }}>
-              <circle cx="36" cy="36" r="30" fill="none" stroke="var(--border)" strokeWidth="6" />
-              <motion.circle cx="36" cy="36" r="30" fill="none" stroke="var(--xp-color)" strokeWidth="6"
-                strokeDasharray={2 * Math.PI * 30}
-                animate={{ strokeDashoffset: 2 * Math.PI * 30 * (1 - pct / 100) }}
-                transition={{ duration: .8, ease: 'easeOut' }} strokeLinecap="round"
-                style={{ filter: 'drop-shadow(0 0 6px var(--xp-color))' }} />
-            </svg>
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--xp-color)', lineHeight: 1 }}>{curDef.level}</span>
-              <span style={{ fontSize: '.42rem', color: 'rgba(87,255,43,.5)', textTransform: 'uppercase', letterSpacing: '.05em' }}>LVL</span>
-            </div>
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ fontSize: '.88rem', fontWeight: 700, color: curDef.color }}>{curDef.title}</span>
-              <span style={{ fontSize: '.78rem', color: 'var(--xp-color)', fontWeight: 700 }}>⚡ {formatNumber(xp)} XP</span>
-            </div>
-            <div style={{ height: 8, background: 'var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 4 }}>
-              <motion.div animate={{ width: `${pct}%` }} transition={{ duration: .8, ease: 'easeOut' }}
-                style={{ height: '100%', background: 'linear-gradient(90deg,var(--xp-color),#27AE60)', borderRadius: 10,
-                  boxShadow: '0 0 10px rgba(87,255,43,.4)' }} />
-            </div>
-            <div style={{ fontSize: '.65rem', color: 'var(--text-muted)' }}>
-              {nextDef
-                ? t('stats.nextLevel', { cur: formatNumber(xpInLvl), need: formatNumber(xpNeeded), lvl: nextDef.level, label: nextDef.title })
-                : `🏆 ${t('stats.maxLevel')}`}
-            </div>
-          </div>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(100px,1fr))', gap: 8, marginBottom: 14 }}>
-          {levelStats.map((s, i) => (
-            <div key={i} style={{ textAlign: 'center', padding: '10px', background: 'var(--bg-card-hover)', border: `1px solid ${s.c}22`, borderRadius: 12 }}>
-              <div style={{ fontSize: '1.4rem', fontWeight: 900, color: s.c }}>{s.v}</div>
-              <div style={{ fontSize: '.6rem', color: 'var(--text-muted)', marginTop: 2 }}>{s.l}</div>
-              <div style={{ fontSize: '.55rem', color: 'var(--text-muted)' }}>{s.u}</div>
-            </div>
-          ))}
-        </div>
-        <div style={{ padding: '8px 12px', background: 'var(--accent-subtle)', borderRadius: 8, fontSize: '.75rem', color: 'var(--accent)' }}>
-          💡 {t('stats.xpHint')}
-        </div>
-      </section>
-
-      {/* ── Global summary ── */}
-      <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: '1.5rem' }}>
-        <h2 style={{ fontSize: '.9rem', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 14px' }}>📊 {t('stats.recapTitle')}</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10 }}>
-          {recapStats.map((s, i) => (
-            <div key={i} style={{ textAlign: 'center', padding: '12px', background: 'var(--bg-card-hover)', border: `1px solid ${s.c}22`, borderRadius: 12 }}>
-              <div style={{ fontSize: '1.3rem', fontWeight: 900, color: s.c }}>{s.v}</div>
-              <div style={{ fontSize: '.62rem', color: 'var(--text-muted)', marginTop: 2 }}>{s.l}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ── Presence ── */}
-      <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: '1.5rem' }}>
-        <h2 style={{ fontSize: '.9rem', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 12px' }}>👥 {t('stats.presenceTitle')}</h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-          <div>
-            {othersOnline > 0 ? (
-              <>
-                <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#27AE60', marginBottom: 4 }}>👥 {online}</div>
-                <div style={{ fontSize: '.8rem', color: 'var(--text-secondary)' }}>{t('stats.onlineText', { count: online })}</div>
-              </>
-            ) : (
-              <div style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>👤 {t('stats.aloneNow')}</div>
-            )}
-            {totalUsers > 0 && <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', marginTop: 6 }}>🎓 {t('stats.totalUsers', { count: totalUsers })}</div>}
-          </div>
-          {othersOnline > 0 && (
-            <div style={{ display: 'flex' }}>
-              {Array.from({ length: Math.min(online, 6) }).map((_, i) => (
-                <motion.div key={i} initial={{ opacity: 0, scale: 0 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * .08 }}
-                  style={{ width: 32, height: 32, borderRadius: '50%',
-                    background: `hsl(${i * 60},60%,50%)`,
-                    border: '2px solid var(--bg-base)',
-                    marginLeft: i > 0 ? -8 : 0,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '.7rem', color: '#fff', fontWeight: 700 }}>
-                  {String.fromCharCode(65 + i)}
-                </motion.div>
-              ))}
-              {online > 6 && <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--bg-card-hover)', border: '2px solid var(--bg-base)', marginLeft: -8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.6rem', color: 'var(--text-muted)' }}>+{online - 6}</div>}
-            </div>
-          )}
-        </div>
-      </section>
+      {/* ── Who is studying right now ── */}
+      <PresenceCard user={user} onOpenConv={onOpenConv} />
 
       {/* ── Badges ── */}
       <section data-tour="tour-stats-badges" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: '1.5rem' }}>
