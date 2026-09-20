@@ -842,30 +842,6 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
     return () => { unsub(); clearInterval(id); };
   }, [group.id]);
 
-  /**
-   * Invitations that have run their course.
-   *
-   * A "join the quiz" or "join the session" bubble is only useful while there
-   * is something to join. Once the quiz is over or the session has ended, it
-   * is a button that leads nowhere — so it leaves the conversation. Nothing is
-   * deleted: the message stays in Firestore, it is simply not shown, which
-   * keeps the history intact and needs no permission to write.
-   *
-   * A session is matched by the id it carries; a quiz carries none, so only
-   * the most recent quiz bubble can be the live one.
-   */
-  const lastQuizMsgId = (() => {
-    for (let i = messages.length - 1; i >= 0; i--) if (messages[i].type === 'quiz') return messages[i].id;
-    return null;
-  })();
-  const sessionRunning = sessionVisible && sessionPhase.phase !== 'done';
-  const isSpentInvite = m => {
-    if (m.type === 'quiz') return !quizLive || m.id !== lastQuizMsgId;
-    if (m.type === 'focus') return !(sessionRunning && liveSession?.id === m.sessionId);
-    return false;
-  };
-  const shownMessages = messages.filter(m => !isSpentInvite(m));
-
   function openQuizTool() {
     if (quizLive) setShowQuiz(true); else setShowQuizSetup(true);
   }
@@ -1204,6 +1180,30 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
   // ended), then gets out of the way even if the host never closed it.
   const sessionVisible = !!liveSession &&
     (sessionPhase.phase !== 'done' || serverNow() - sessionEndMs(liveSession) < 5 * 60000);
+
+  /**
+   * Invitations that have run their course.
+   *
+   * A "join the quiz" or "join the session" bubble is only useful while there
+   * is something to join. Once the quiz is over or the session has ended, it
+   * is a button that leads nowhere — so it leaves the conversation. Nothing is
+   * deleted: the message stays in Firestore, it is simply not shown, which
+   * keeps the history intact and needs no permission to write.
+   *
+   * A session is matched by the id it carries; a quiz carries none, so only
+   * the most recent quiz bubble can be the live one.
+   */
+  const lastQuizMsgId = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) if (messages[i].type === 'quiz') return messages[i].id;
+    return null;
+  })();
+  const sessionRunning = sessionVisible && sessionPhase.phase !== 'done';
+  const isSpentInvite = m => {
+    if (m.type === 'quiz') return !quizLive || m.id !== lastQuizMsgId;
+    if (m.type === 'focus') return !(sessionRunning && liveSession?.id === m.sessionId);
+    return false;
+  };
+  const shownMessages = messages.filter(m => !isSpentInvite(m));
 
   // Members matching the current @-token (for the mention autocomplete).
   const mentionMatches = mention == null ? [] : members
