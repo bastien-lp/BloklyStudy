@@ -11,6 +11,7 @@
  *
  * Props:
  *   garden    { pool, slots, by }
+ *   species   what to draw, from the preferences (personalisation panel)
  *   subjects  the main document's subjects (names and colours of the tints)
  *   coins     current balance, to know whether a plot can be bought
  *   onCut()   cut the whole grove
@@ -42,7 +43,7 @@ function PlotSign({ children, tone = SCENE.cream }) {
   );
 }
 
-export default function GardenTab({ garden, subjects = [], coins = 0, onCut, onBuyPlot }) {
+export default function GardenTab({ garden, subjects = [], coins = 0, species = 'bamboo', onCut, onBuyPlot }) {
   const { t } = useTranslation();
   const [fx, setFx] = useState(null);           // the coins that fly off after a cut
 
@@ -139,7 +140,7 @@ export default function GardenTab({ garden, subjects = [], coins = 0, onCut, onB
         }}>
           {state.plants.map(plant => (
             <div key={plant.index} style={{ width: 168, maxWidth: '33%', minWidth: 104, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-              <GardenPlant species={garden.plant} pct={plant.pct} ripe={plant.ripe} tints={tints} />
+              <GardenPlant species={species} pct={plant.pct} ripe={plant.ripe} tints={tints} />
               <PlotSign tone={plant.ripe ? '#FFE6A8' : SCENE.cream}>
                 {plant.ripe ? t('garden.ripe') : t('garden.minutesOf', { mins: plant.mins, total: MINUTES_PER_BAMBOO })}
               </PlotSign>

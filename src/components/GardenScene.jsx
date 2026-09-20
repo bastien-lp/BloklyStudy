@@ -13,8 +13,10 @@
  * growth reads on it:
  *   - bamboo grows by HEIGHT (a clip reveals the stalks from the ground up),
  *     which is what bamboo actually does;
- *   - the tree and flower species grow by SIZE (a young maple is a small
- *     maple), because half a canopy would just look broken.
+ *   - the tree and flower species grow in two stages: a SEEDLING while the
+ *     plot is under SPROUT_UNTIL (a stem with its first pair of leaves, and a
+ *     hint of what it will become), then the adult form growing by SIZE. A
+ *     shrunken full-grown tree read as a blob; a sprout reads as a beginning.
  * Everything else — ground, mist, ripe halo, fireflies — is shared, so the
  * plots stay part of the same garden whatever is planted in them.
  */
@@ -375,6 +377,77 @@ function PineBody() {
   );
 }
 
+/* ── Seedlings ───────────────────────────────────────────────────────────── */
+
+/** Below this much growth, a scaling species is still a sprout. */
+const SPROUT_UNTIL = 0.34;
+/** How tall the sprout stands, fully "sprouted", in viewBox units. */
+const SPROUT_H = 62;
+
+/**
+ * A young plant: a curved stem, two cotyledons, and one detail that says which
+ * species it will become — a pink bud, a pair of russet leaves, a yellow bud,
+ * a tuft of needles. Drawn at full size; the caller scales it with growth.
+ */
+function Seedling({ species }) {
+  const top = SOIL_Y - SPROUT_H;
+  const stem = `M${CENTER} ${SOIL_Y} C${CENTER - 3} ${SOIL_Y - SPROUT_H * 0.45} ${CENTER + 3} ${SOIL_Y - SPROUT_H * 0.7} ${CENTER} ${top}`;
+
+  // Species-specific tones and crown, on the same young stem.
+  const look = {
+    sakura: { stem: '#6E8B57', leaf: '#6E9B4E' },
+    maple: { stem: '#7A6A4A', leaf: '#C4553A' },
+    sunflower: { stem: '#4F7A38', leaf: '#5E8C42' },
+    pine: { stem: '#4E6B3A', leaf: '#3E6B2E' },
+  }[species] || { stem: SCENE.leaf, leaf: SCENE.leafLight };
+
+  return (
+    <g>
+      {/* two seed leaves at the base, still close to the ground */}
+      <Leaf x={CENTER - 1} y={SOIL_Y - SPROUT_H * 0.3} dir={-1} len={17} tilt={7} fill={look.leaf} />
+      <Leaf x={CENTER + 1} y={SOIL_Y - SPROUT_H * 0.42} dir={1} len={15} tilt={9} fill={look.leaf} opacity=".9" />
+      <path d={stem} stroke={look.stem} strokeWidth="4.2" fill="none" strokeLinecap="round" />
+
+      {species === 'sakura' && (
+        <g>
+          <circle cx={CENTER} cy={top - 3} r="7" fill="#F3B3C8" />
+          <circle cx={CENTER - 2.5} cy={top - 5} r="4" fill="#FBDCE6" />
+          <circle cx={CENTER + 4} cy={top + 2} r="3.4" fill="#E68CA8" />
+        </g>
+      )}
+
+      {species === 'maple' && (
+        <g>
+          <MapleLeaf x={CENTER - 1} y={top - 2} size={19} rotate={-12} fill="#C4553A" />
+          <MapleLeaf x={CENTER + 9} y={top + 7} size={14} rotate={26} fill="#E0A03C" />
+        </g>
+      )}
+
+      {species === 'sunflower' && (
+        <g>
+          {/* a bud, still closed, already turned to the light */}
+          <ellipse cx={CENTER} cy={top - 1} rx="7.5" ry="9" fill="#E8B33C" />
+          <ellipse cx={CENTER - 2} cy={top - 2} rx="4.5" ry="6" fill="#F7DC8A" />
+          <path d={`M${CENTER - 7} ${top + 5} q7 6 14 0`} stroke="#4F7A38" strokeWidth="3" fill="none" strokeLinecap="round" />
+        </g>
+      )}
+
+      {species === 'pine' && (
+        <g stroke="#3E6B2E" strokeWidth="2.6" strokeLinecap="round" fill="none">
+          <path d={`M${CENTER} ${top + 10} l-11 -9`} />
+          <path d={`M${CENTER} ${top + 10} l11 -9`} />
+          <path d={`M${CENTER} ${top + 4} l-8 -8`} />
+          <path d={`M${CENTER} ${top + 4} l8 -8`} />
+          <path d={`M${CENTER} ${top + 2} l0 -9`} />
+        </g>
+      )}
+
+      {/* the seed husk the sprout just pushed through */}
+      <ellipse cx={CENTER + 6} cy={SOIL_Y - 4} rx="4" ry="2.6" fill={SCENE.bark} opacity=".5" transform={`rotate(-18 ${CENTER + 6} ${SOIL_Y - 4})`} />
+    </g>
+  );
+}
+
 /* ── The plant ───────────────────────────────────────────────────────────── */
 
 const BODIES = {
@@ -399,7 +472,13 @@ export function GardenPlant({ species = 'bamboo', pct = 0, ripe = false, tints =
   const kind = BODIES[species] || BODIES.bamboo;
   const grown = Math.max(0.06, Math.min(1, pct));
   const revealH = FULL_H * grown + 6;
-  const scale = kind.growth === 'scale' ? 0.2 + 0.8 * grown : 1;
+  // A scaling species is a sprout at first, then the adult form. The adult
+  // starts at 0.42 — the height the sprout had reached — so the switch does
+  // not jump.
+  const sprouting = kind.growth === 'scale' && grown < SPROUT_UNTIL;
+  const scale = kind.growth !== 'scale' ? 1
+    : sprouting ? 0.45 + 0.55 * (grown / SPROUT_UNTIL)
+      : 0.42 + 0.58 * ((grown - SPROUT_UNTIL) / (1 - SPROUT_UNTIL));
   const Body = kind.Body;
 
   return (
@@ -446,7 +525,7 @@ export function GardenPlant({ species = 'bamboo', pct = 0, ripe = false, tints =
             initial={false} animate={{ scale }} transition={{ duration: .9, ease: [.22, 1, .36, 1] }}
             style={{ originX: `${CENTER}px`, originY: `${SOIL_Y}px` }}>
             <g clipPath={kind.growth === 'clip' ? `url(#grow${id})` : undefined}>
-              <Body tint={tints[0]} id={id} />
+              {sprouting ? <Seedling species={species} /> : <Body tint={tints[0]} id={id} />}
             </g>
           </motion.g>
         </motion.g>

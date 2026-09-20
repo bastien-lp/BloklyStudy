@@ -15,14 +15,12 @@
  *     cutting regularly is the point).
  *
  * STORAGE (`users/{uid}/data/reserve`, additive — nothing was renamed):
- *   bamboo: { v: 2, pool: minutes banked, slots: 1..3, by: { subjId: minutes },
- *             plant: species id, owned: [species ids] }
+ *   bamboo: { v: 2, pool: minutes banked, slots: 1..3, by: { subjId: minutes } }
+ * Which species is planted is NOT here: it is a preference (prefs.plantId).
  * The old per-subject fields (`studyTime`, `harvested`, `potLevels`,
  * `potProgress`, `diversity`) are LEFT UNTOUCHED: `readGarden` converts them
  * into the first pool once, and they stay in the document as history.
  */
-
-import { cleanSpecies, cleanOwned, DEFAULT_SPECIES } from './plantSpecies';
 
 /** Minutes of focus for one ripe bamboo. */
 export const MINUTES_PER_BAMBOO = 60;
@@ -70,27 +68,15 @@ export function readGarden(reserve = {}) {
       pool: Math.max(0, Math.round(num(b.pool))),
       slots: clampSlots(b.slots),
       by: { ...(b.by || {}) },
-      plant: cleanSpecies(b.plant),
-      owned: cleanOwned(b.owned),
       migrated: false,
     };
   }
-  return {
-    pool: legacyPool(reserve), slots: 1, by: {},
-    plant: DEFAULT_SPECIES, owned: cleanOwned([]), migrated: true,
-  };
+  return { pool: legacyPool(reserve), slots: 1, by: {}, migrated: true };
 }
 
 /** The value to store back, always complete and always valid. */
-export function writeGarden({ pool, slots, by, plant, owned }) {
-  return {
-    v: 2,
-    pool: Math.max(0, Math.round(num(pool))),
-    slots: clampSlots(slots),
-    by: by || {},
-    plant: cleanSpecies(plant),
-    owned: cleanOwned(owned),
-  };
+export function writeGarden({ pool, slots, by }) {
+  return { v: 2, pool: Math.max(0, Math.round(num(pool))), slots: clampSlots(slots), by: by || {} };
 }
 
 /**

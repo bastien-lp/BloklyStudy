@@ -1,8 +1,30 @@
+/**
+ * MonthView — the planner's month grid.
+ * --------------------------------------------------------------------------
+ * Every cell has the SAME height and its content is clipped: a busy day makes
+ * its entries scroll behind a "+N", it never stretches its whole week. That is
+ * what the view was missing — cells grew to fit their text, rows went out of
+ * step and everything ended up too small to read.
+ *
+ * One entry is one line: a colour bar, the time, and the name. Blocks and
+ * imported calendar events are merged and sorted by time, so a day reads like
+ * a schedule and not like two separate lists.
+ *
+ * Clicking a day opens the panel on the right, which is where the full detail
+ * and the actions live.
+ */
+
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { GraduationCap, Plus } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatDuration } from '../lib/duration';
 import { eventsForDay, formatEventTime, DEFAULT_CALENDAR_COLOR } from '../lib/externalCalendars';
+
+/** How many entries a cell shows before the rest becomes "+N". */
+const MAX_ENTRIES = 3;
+/** Cell height, fixed so a heavy day never stretches its week. */
+const CELL_H = 108;
 
 /** Imported events of a day, all-day first then by start time. */
 function externalForDay(events, day) {
@@ -13,6 +35,32 @@ function externalForDay(events, day) {
 function hm(h) {
   const hh=Math.floor(h), mm=String(Math.round((h%1)*60)).padStart(2,'0');
   return `${hh}h${mm!=='00'?mm:''}`;
+}
+
+/**
+ * One line of a day cell. The colour is carried by a bar on the left rather
+ * than by a filled background: three tinted rectangles in a small cell is
+ * exactly what made the grid unreadable.
+ */
+function Entry({ color, time, label, done, dashed, title }) {
+  return (
+    <div title={title || label}
+      style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, height: 17, flexShrink: 0,
+        padding: '0 4px 0 0', borderRadius: 4, background: done ? 'transparent' : `${color}1f`,
+        borderLeft: `3px ${dashed ? 'dashed' : 'solid'} ${color}`, opacity: done ? .55 : 1 }}>
+      {time && (
+        <span style={{ fontSize: '.6rem', fontWeight: 700, color: 'var(--text-muted)', flexShrink: 0,
+          fontVariantNumeric: 'tabular-nums', paddingLeft: 4 }}>
+          {time}
+        </span>
+      )}
+      <span style={{ fontSize: '.66rem', fontWeight: 600, minWidth: 0, color: 'var(--text-primary)',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        textDecoration: done ? 'line-through' : 'none', paddingLeft: time ? 0 : 4 }}>
+        {label}
+      </span>
+    </div>
+  );
 }
 
 export default function MonthView({ blocks, subjects, onAddBlock, onToggleBlock, onDeleteBlock, externalEvents = [], calendarColorOf = () => DEFAULT_CALENDAR_COLOR }) {
@@ -162,14 +210,28 @@ export default function MonthView({ blocks, subjects, onAddBlock, onToggleBlock,
                 const dayBlocks = blocksByDate[dateStr]||[];
                 const dayExams  = examsByDate[dateStr]||[];
                 const dayExternal = externalForDay(externalEvents, day);
-                const externalSlots = Math.max(0, 3 - dayBlocks.length);
-                const hiddenCount = Math.max(0, dayBlocks.length - 3) + Math.max(0, dayExternal.length - externalSlots);
+                // Blocks and imported events in one list, in the order of the day.
+                const entries = [
+                  ...dayBlocks.map(b => ({
+                    key: `b${b.id}`, sort: Number(b.hour) || 0, time: hm(b.hour),
+                    label: subjects.find(s => s.id === b.subj)?.name || '?',
+                    color: subjects.find(s => s.id === b.subj)?.color || '#4A90D9',
+                    done: b.status === 'done',
+                    title: `${hm(b.hour)} · ${subjects.find(s => s.id === b.subj)?.name || '?'}${b.task ? ` · ${b.task}` : ''}`,
+                  })),
+                  ...dayExternal.map(e => ({
+                    key: `e${e.key}`, sort: e.allDay ? -1 : e.start.getHours() + e.start.getMinutes() / 60,
+                    time: e.allDay ? '' : formatEventTime(e.start, lang),
+                    label: e.title, color: calendarColorOf(e.calId), dashed: true, title: e.title,
+                  })),
+                ].sort((a, b) => a.sort - b.sort);
+                const hiddenCount = Math.max(0, entries.length - MAX_ENTRIES);
 
                 return (
                   <motion.div key={di}
                     whileHover={{ background:'rgba(255,255,255,.05)' }}
                     onClick={()=>setSelectedDay(isSelected?null:day)}
-                    style={{ minHeight:80, padding:'6px', cursor:'pointer',
+                    style={{ height: CELL_H, boxSizing: 'border-box', overflow: 'hidden', padding:'5px 5px 4px', cursor:'pointer',
                       borderRight: di<6 ? '1px solid var(--border)' : 'none',
                       background: isSelected ? 'var(--accent-subtle)' : isToday ? 'var(--accent-subtle)' : 'transparent',
                       outline: isSelected ? '1px solid var(--accent)' : isToday ? '1px solid var(--accent-glow)' : 'none',
@@ -185,43 +247,23 @@ export default function MonthView({ blocks, subjects, onAddBlock, onToggleBlock,
                         {day.getDate()}
                       </span>
                       {dayExams.length>0 && (
-                        <span title={dayExams.map(e=>e.name).join(', ')}
-                          style={{ fontSize:'.55rem', background:'rgba(231,76,60,.2)',
-                            color:'#ff6b6b', borderRadius:6, padding:'1px 4px', fontWeight:700 }}>
-                          🎓
+                        <span title={dayExams.map(e=>e.name).join(', ')} aria-label={dayExams.map(e=>e.name).join(', ')}
+                          style={{ display:'inline-flex', alignItems:'center', gap:3, background:'rgba(231,76,60,.18)',
+                            color:'#ff6b6b', borderRadius:6, padding:'1px 5px', fontSize:'.58rem', fontWeight:800 }}>
+                          <GraduationCap size={11} strokeWidth={2.4} aria-hidden="true" />
+                          {dayExams.length > 1 ? dayExams.length : ''}
                         </span>
                       )}
                     </div>
 
-                    {/* Blocs colorés */}
-                    <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
-                      {dayBlocks.slice(0,3).map(b => {
-                        const subj = subjects.find(s=>s.id===b.subj);
-                        const color = subj?.color||'#4A90D9';
-                        return (
-                          <div key={b.id} style={{ fontSize:'.58rem', padding:'1px 5px', borderRadius:4,
-                            background: b.status==='done' ? `${color}20` : `${color}35`,
-                            color: b.status==='done' ? `${color}80` : 'var(--text-primary)',
-                            textDecoration: b.status==='done' ? 'line-through' : 'none',
-                            overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-                            borderLeft:`2px solid ${color}` }}>
-                            {subj?.name?.slice(0,10)||'?'}
-                          </div>
-                        );
-                      })}
-                      {dayExternal.slice(0, externalSlots).map(e => {
-                        const color = calendarColorOf(e.calId);
-                        return (
-                          <div key={e.key} title={e.title} style={{ fontSize:'.58rem', padding:'1px 5px', borderRadius:4,
-                            background:`${color}22`, color:'var(--text-primary)',
-                            overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-                            border:`1px dashed ${color}80`, borderLeft:`2px solid ${color}` }}>
-                            {e.title}
-                          </div>
-                        );
-                      })}
+                    {/* The day, one line per entry */}
+                    <div style={{ display:'flex', flexDirection:'column', gap:2, minHeight:0 }}>
+                      {entries.slice(0, MAX_ENTRIES).map(e => (
+                        <Entry key={e.key} color={e.color} time={e.time} label={e.label}
+                          done={e.done} dashed={e.dashed} title={e.title} />
+                      ))}
                       {hiddenCount>0 && (
-                        <div style={{ fontSize:'.55rem', color:'var(--text-muted)', paddingLeft:4 }}>
+                        <div style={{ fontSize:'.6rem', fontWeight:700, color:'var(--text-muted)', paddingLeft:7 }}>
                           {t('planning.monthAndMore', { count: hiddenCount })}
                         </div>
                       )}
@@ -244,11 +286,12 @@ export default function MonthView({ blocks, subjects, onAddBlock, onToggleBlock,
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                 <div>
                   <div style={{ fontSize:'.88rem', fontWeight:700, color:'var(--text-primary)' }}>
-                    {selectedDay.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}
+                    {formatDate(selectedDay, { weekday: 'long', day: 'numeric', month: 'long' })}
                   </div>
                   {selectedExams.length>0 && (
-                    <div style={{ fontSize:'.65rem', color:'#ff6b6b', marginTop:2 }}>
-                      🎓 {selectedExams.map(e=>e.name).join(', ')}
+                    <div style={{ display:'flex', alignItems:'center', gap:5, fontSize:'.65rem', color:'#ff6b6b', marginTop:2 }}>
+                      <GraduationCap size={12} strokeWidth={2.4} aria-hidden="true" />
+                      {selectedExams.map(e=>e.name).join(', ')}
                     </div>
                   )}
                 </div>
@@ -325,10 +368,12 @@ export default function MonthView({ blocks, subjects, onAddBlock, onToggleBlock,
               {/* Ajouter un bloc */}
               <motion.button whileHover={{scale:1.02}} whileTap={{scale:.98}}
                 onClick={()=>onAddBlock(selectedDay)}
-                style={{ padding:'9px',borderRadius:10,border:'1px solid rgba(74,144,217,.3)',
+                style={{ display:'flex',alignItems:'center',justifyContent:'center',gap:6,
+                  padding:'9px',borderRadius:10,border:'1px solid rgba(74,144,217,.3)',
                   background:'rgba(74,144,217,.08)',color:'#93c5fd',
                   fontSize:'.78rem',fontWeight:600,cursor:'pointer' }}>
-                + Ajouter un bloc
+                <Plus size={14} strokeWidth={2.4} aria-hidden="true" />
+                {t('planning.addBlockDay')}
               </motion.button>
             </motion.div>
           )}

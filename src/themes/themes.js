@@ -908,6 +908,7 @@ export const THEME_EDITABLE_VARS = [
 export const DEFAULT_PREFERENCES = {
    lang:            'fr',
    themeId:         'nuit',
+  plantId:         'bamboo',   // what grows in the garden (see lib/plantSpecies)
   fontId:          'inter',
   radius:          'normal',
   density:         'normal',
@@ -947,6 +948,8 @@ const UNLOCK_LEVEL = {
   pacifico:21, amatic_sc:23, playwrite_it_moderna:15, playwrite_england_join:19,
   shadows_into_light:25, patua_one:27, space_mono:33, crafty_girls:39,
   jim_nightshade:7, bebas_neue:29, fredoka:35, cormorant_garamond:31, audiowide:37,
+  // Garden species (lib/plantSpecies.js) — same ladder as the themes and fonts.
+  bamboo:1, sakura:8, maple:15, sunflower:22, pine:30,
 };
 
 export const unlockLevelOf = (item) => UNLOCK_LEVEL[item.id] ?? 1;

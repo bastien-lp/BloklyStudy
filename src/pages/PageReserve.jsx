@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Sprout, Store, Home, Check, TrendingUp, Palette,
+  Sprout, Store, Home, Check, TrendingUp,
   ChevronLeft, ChevronRight, Lock, Unlock, RotateCw, Plus, Minus,
   ArrowUp, ArrowDown, Trash2, X,
 } from 'lucide-react';
@@ -14,9 +14,7 @@ import { asset } from '../lib/assets';
 import { SCENE } from '../lib/gardenPalette';
 import { CoinIcon } from '../components/GardenScene';
 import GardenTab from '../components/GardenTab';
-import GardenStyleTab from '../components/GardenStyleTab';
 import { readGarden, writeGarden, afterCut, cutValue, nextSlotPrice, MAX_SLOTS } from '../lib/bambooGarden';
-import { speciesPrice } from '../lib/plantSpecies';
 import { questState, claimQuest } from '../lib/dailyQuests';
 import DailyQuests from '../components/DailyQuests';
 
@@ -105,7 +103,7 @@ function ItemVisual({ item, size }) {
 
 
 
-export default function PageReserve({ user }) {
+export default function PageReserve({ user, prefs }) {
   const { t } = useTranslation();
   const tour = useGuidedTour('home');
   const [subjects, setSubjects] = useState([]);
@@ -276,33 +274,6 @@ export default function PageReserve({ user }) {
     setClaiming(null);
   }
 
-  /** Plants a species already owned. */
-  async function selectPlant(id) {
-    const garden = reserve.bamboo;
-    if (!garden || garden.plant === id || !(garden.owned || []).includes(id)) return;
-    const next = writeGarden({ ...garden, plant: id });
-
-    setReserve(r => ({ ...r, bamboo: next }));
-    try {
-      await setDoc(doc(db, 'users', user.uid, 'data', 'reserve'), { bamboo: next }, { merge: true });
-    } catch (e) { reportSaveError(e); }
-  }
-
-  /** Buys a species and plants it right away. */
-  async function buyPlant(id) {
-    const garden = reserve.bamboo;
-    const price = speciesPrice(id, garden.owned);
-    if (!price || (reserve.coins || 0) < price) return;
-    const next = writeGarden({ ...garden, plant: id, owned: [...(garden.owned || []), id] });
-    const newCoins = reserve.coins - price;
-
-    setReserve(r => ({ ...r, coins: newCoins, bamboo: next }));
-    try {
-      await setDoc(doc(db, 'users', user.uid, 'data', 'reserve'),
-        { coins: newCoins, bamboo: next }, { merge: true });
-    } catch (e) { reportSaveError(e); }
-  }
-
   // Répliques de la marchande selon le contexte
   function shopSay(text) {
     setShopMsg(text);
@@ -441,7 +412,6 @@ export default function PageReserve({ user }) {
       <div data-tour="tour-home-tabs" className="reserve-tabs" style={{ display: 'flex', gap: 4, background: 'var(--bg-card)', padding: 4,
         borderRadius: 22, alignSelf: 'center', flexWrap: 'nowrap' }}>
         {[{ v: 'garden', l: 'Jardin', I: Sprout },
-          { v: 'style', l: t('garden.styleTab'), I: Palette },
           { v: 'shop', l: 'Boutique', I: Store },
           { v: 'room', l: 'Ma maison', I: Home }].map(t => {
           const active = tab === t.v;
@@ -472,14 +442,8 @@ export default function PageReserve({ user }) {
             <DailyQuests state={questState(main || {}, reserve, user.uid, questDay)}
               onClaim={claimDailyQuest} busyId={claiming} />
             <GardenTab garden={reserve.bamboo} subjects={subjects} coins={reserve.coins}
-              onCut={cutGarden} onBuyPlot={buyPlot} />
+              species={prefs?.plantId} onCut={cutGarden} onBuyPlot={buyPlot} />
           </motion.div>
-        )}
-
-        {/* ── PLANTES ── */}
-        {tab === 'style' && (
-          <GardenStyleTab garden={reserve.bamboo} coins={reserve.coins}
-            onSelect={selectPlant} onBuy={buyPlant} />
         )}
 
         {/* ── BOUTIQUE ── */}

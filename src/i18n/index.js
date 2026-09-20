@@ -32,6 +32,8 @@ import { createContext, createElement, useContext, useMemo } from 'react';
 
 const fr = {
   themeEditor: {
+    tabPlants: "Plantes",
+    plantsHint: "Ce qui pousse dans ton jardin, dans l'onglet Home. Les espèces se débloquent en montant de niveau, comme les thèmes et les polices — et le choix ne change rien aux règles du jardin.",
     unlockAtLevel: 'Débloque au niveau {level}',
     resetToTheme: 'Revenir à la couleur du thème',
     title: 'Personnaliser',
@@ -1966,6 +1968,8 @@ const fr = {
 
 const en = {
   themeEditor: {
+    tabPlants: "Plants",
+    plantsHint: "What grows in your garden, in the Home tab. Species unlock as you level up, like the themes and the fonts — and the choice changes nothing about the garden's rules.",
     unlockAtLevel: 'Unlocks at level {level}',
     resetToTheme: 'Back to the theme colour',
     title: 'Customise',
@@ -3899,6 +3903,8 @@ const en = {
 // Only `common` is translated for es/de so far. Anything missing falls back to French.
 const es = {
   themeEditor: {
+    tabPlants: "Plantas",
+    plantsHint: "Lo que crece en tu jardín, en la pestaña Home. Las especies se desbloquean al subir de nivel, como los temas y las fuentes, y la elección no cambia nada de las reglas del jardín.",
     title: 'Personalizar',
     xpHint: '{xp} XP — desbloquea más a medida que avanzas',
     nextUnlock: 'Siguiente',
@@ -5829,6 +5835,8 @@ const es = {
 
 const de = {
   themeEditor: {
+    tabPlants: "Pflanzen",
+    plantsHint: "Was in deinem Garten wächst, im Home-Tab. Arten schaltest du mit Stufen frei, wie Themes und Schriften — und die Wahl ändert nichts an den Regeln des Gartens.",
     title: 'Anpassen',
     xpHint: '{xp} XP — schalte mit deinem Fortschritt mehr frei',
     nextUnlock: 'Nächstes',

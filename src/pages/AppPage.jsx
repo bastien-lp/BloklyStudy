@@ -97,7 +97,7 @@ const PAGE_MAP = {
   whoarewe:   ({ user, onTuto }) => <PageWhoarewe user={user} onTuto={onTuto} />,
   study:      ({ user, prefs, onTuto }) => <PageStudy user={user} prefs={prefs} onTuto={onTuto} />,
   profile:    ({ user }) => <PageProfile user={user} />,
-  reserve:    ({ user }) => <PageReserve user={user} />,
+  reserve:    ({ user, prefs }) => <PageReserve user={user} prefs={prefs} />,
 };
 
 // Tab bar definition. `labelKey` resolves to a localized label.

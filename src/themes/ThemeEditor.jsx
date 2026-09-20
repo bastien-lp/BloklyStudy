@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
 import { useTranslation } from '../i18n';
+import { PLANT_SPECIES } from '../lib/plantSpecies';
+import { GardenPlant } from '../components/GardenScene';
+import { SCENE } from '../lib/gardenPalette';
 import {
   THEMES, FONTS, RADIUS_STYLES,
   RING_STYLES, DEFAULT_PREFERENCES, getTheme, isUnlocked, unlockLevelOf, unlockXpOf,
@@ -227,6 +230,50 @@ function FontCard({ font, selected, userXp, onClick }) {
   );
 }
 
+/**
+ * One species, drawn fully grown on its patch of sky. Same unlock rules as a
+ * font: the level decides, nothing is bought.
+ */
+function PlantCard({ species, selected, userXp, onClick }) {
+  const { t } = useTranslation();
+  const locked = !isUnlocked(species, userXp);
+  const active = selected === species.id;
+
+  return (
+    <motion.button
+      whileHover={!locked?{scale:1.03}:{}}
+      whileTap={!locked?{scale:.97}:{}}
+      onClick={() => !locked && onClick(species.id)}
+      aria-pressed={active}
+      style={{
+        position:'relative', padding:'8px 8px 10px', borderRadius:12, border:'none',
+        cursor:locked?'not-allowed':'pointer', overflow:'hidden',
+        background:`linear-gradient(180deg, ${SCENE.skyTop} 0%, ${SCENE.skyMid} 62%, ${SCENE.skyLow} 100%)`,
+        outline: active?'2px solid var(--accent)':'1px solid var(--border)',
+        opacity: locked?.5:1, transition:'all .2s',
+        display:'flex', flexDirection:'column', alignItems:'center', gap:4,
+      }}>
+      <div style={{ width:'74%', pointerEvents:'none' }}>
+        <GardenPlant species={species.id} pct={1} idle={false} />
+      </div>
+      <span style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'3px 10px', borderRadius:8,
+        background:`linear-gradient(180deg, ${SCENE.barkLight}, ${SCENE.bark})`,
+        boxShadow:'inset 0 1px 0 rgba(255,236,205,.28)' }}>
+        <span aria-hidden="true" style={{ width:7, height:7, borderRadius:'50%', background:species.swatch,
+          boxShadow:'0 0 0 2px rgba(255,244,231,.35)' }} />
+        <span style={{ fontSize:'.68rem', fontWeight:700, color:SCENE.cream, whiteSpace:'nowrap' }}>
+          {t(`garden.species_${species.id}`)}
+        </span>
+      </span>
+      {locked && (
+        <span style={{ fontSize:'.52rem', fontWeight:700, color:SCENE.ink }}>
+          🔒 {t('themeEditor.lockedAt', { level: unlockLevelOf(species) })}
+        </span>
+      )}
+    </motion.button>
+  );
+}
+
 function RadiusPreview({ radiusId }) {
   const r = { sharp: '2px', normal: '10px', bubbly: '22px' }[radiusId] || '10px';
   return (
@@ -375,10 +422,12 @@ export default function ThemeEditor({ prefs, userXp=0, onSave, onClose, customAl
   // Fonts are shown in unlock order: everything already available first, then
   // the next thing to earn. Ties keep the catalogue's own order.
   const sortedFonts = [...FONTS].sort((a,b)=>unlockXpOf(a)-unlockXpOf(b));
+  const sortedPlants = [...PLANT_SPECIES].sort((a,b)=>unlockXpOf(a)-unlockXpOf(b));
 
   const tabs = [
     { v:'themes', l:t('themeEditor.tabThemes') },
     { v:'fonts',  l:t('themeEditor.tabFonts') },
+    { v:'plants', l:t('themeEditor.tabPlants') },
     { v:'layout', l:t('themeEditor.tabLayout') },
     // "Custom" tab is reserved for authorized accounts (see customAllowed prop).
     ...(customAllowed ? [{ v:'custom', l:t('themeEditor.tabCustom') }] : []),
@@ -395,7 +444,7 @@ export default function ThemeEditor({ prefs, userXp=0, onSave, onClose, customAl
   ];
 
   // Next unlock
-  const allUnlockable = [...THEMES, ...FONTS].filter(i=>!isUnlocked(i,userXp)&&unlockLevelOf(i)>1);
+  const allUnlockable = [...THEMES, ...FONTS, ...PLANT_SPECIES].filter(i=>!isUnlocked(i,userXp)&&unlockLevelOf(i)>1);
   const nextUnlock = allUnlockable.sort((a,b)=>unlockXpOf(a)-unlockXpOf(b))[0];
 
   return (
@@ -504,6 +553,22 @@ export default function ThemeEditor({ prefs, userXp=0, onSave, onClose, customAl
                   selected={draft.fontId} userXp={userXp}
                   onClick={v=>update('fontId',v)} />
               ))}
+            </div>
+          )}
+
+          {/* ── PLANTES ── */}
+          {tab==='plants' && (
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              <div style={{ fontSize:'.7rem', color:'var(--text-muted)', lineHeight:1.5 }}>
+                {t('themeEditor.plantsHint')}
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))', gap:8 }}>
+                {sortedPlants.map(species=>(
+                  <PlantCard key={species.id} species={species}
+                    selected={draft.plantId} userXp={userXp}
+                    onClick={v=>update('plantId',v)} />
+                ))}
+              </div>
             </div>
           )}
 
