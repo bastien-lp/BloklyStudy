@@ -26,7 +26,7 @@ import {
   gardenState, cutValue, contributions, nextSlotPrice,
 } from '../lib/bambooGarden';
 import { SCENE } from '../lib/gardenPalette';
-import { CoinIcon, GardenBackdrop, BambooPlant, EmptyPlot, RedPanda } from './GardenScene';
+import { CoinIcon, GardenBackdrop, GardenPlant, EmptyPlot } from './GardenScene';
 
 /** The wooden sign under each plot. */
 function PlotSign({ children, tone = SCENE.cream }) {
@@ -101,7 +101,7 @@ export default function GardenTab({ garden, subjects = [], coins = 0, onCut, onB
 
       {/* ── The grove ── */}
       <div data-tour="tour-home-garden" style={{
-        position: 'relative', overflow: 'hidden', borderRadius: 22, padding: '22px 16px 0',
+        position: 'relative', overflow: 'hidden', borderRadius: 22, padding: '22px 16px 12px',
         background: `linear-gradient(180deg, ${SCENE.skyTop} 0%, ${SCENE.skyMid} 56%, ${SCENE.skyLow} 100%)`,
         boxShadow: 'inset 0 -40px 60px -40px rgba(126,88,51,.5)',
       }}>
@@ -139,7 +139,7 @@ export default function GardenTab({ garden, subjects = [], coins = 0, onCut, onB
         }}>
           {state.plants.map(plant => (
             <div key={plant.index} style={{ width: 168, maxWidth: '33%', minWidth: 104, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-              <BambooPlant pct={plant.pct} ripe={plant.ripe} tints={tints} />
+              <GardenPlant species={garden.plant} pct={plant.pct} ripe={plant.ripe} tints={tints} />
               <PlotSign tone={plant.ripe ? '#FFE6A8' : SCENE.cream}>
                 {plant.ripe ? t('garden.ripe') : t('garden.minutesOf', { mins: plant.mins, total: MINUTES_PER_BAMBOO })}
               </PlotSign>
@@ -168,12 +168,6 @@ export default function GardenTab({ garden, subjects = [], coins = 0, onCut, onB
               </div>
             );
           })}
-        </div>
-
-        {/* the grove's companion, sitting in the grass */}
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: -6 }}>
-          <RedPanda width={96} asleep={garden.pool === 0} />
-          <div style={{ flex: 1 }} />
         </div>
       </div>
 

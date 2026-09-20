@@ -1,18 +1,22 @@
 /**
- * GardenScene — the drawn parts of the bamboo garden.
+ * GardenScene — the drawn parts of the garden.
  * --------------------------------------------------------------------------
  * Pure presentation: every piece takes what it shows as props and holds no
- * state of its own, so the garden's rules live in lib/bambooGarden.js and
- * PageReserve only has to place these on screen.
+ * state of its own, so the garden's rules live in lib/bambooGarden.js and the
+ * pages only have to place these on screen.
  *
  * The garden is an ILLUSTRATION, not a themed surface: its colours are fixed
  * (misty morning, warm wood, forest greens) and deliberately do not follow the
- * app theme — exactly like a picture hung on a wall. Only the tints of the
- * leaves follow the subjects that fed the grove.
+ * app theme — exactly like a picture hung on a wall.
  *
- * Growth is drawn as one continuous stalk revealed by a clip rectangle rather
- * than a stack of discrete blocks: a bamboo that is 3/5 grown looks like a
- * young bamboo, not like a broken one.
+ * FIVE SPECIES, one set of rules. A species only changes the drawing and how
+ * growth reads on it:
+ *   - bamboo grows by HEIGHT (a clip reveals the stalks from the ground up),
+ *     which is what bamboo actually does;
+ *   - the tree and flower species grow by SIZE (a young maple is a small
+ *     maple), because half a canopy would just look broken.
+ * Everything else — ground, mist, ripe halo, fireflies — is shared, so the
+ * plots stay part of the same garden whatever is planted in them.
  */
 
 import { useId } from 'react';
@@ -52,7 +56,7 @@ function DistantStalk({ x, top, width, tone }) {
 
 /**
  * Sun, haze and layers of distant bamboo. Nothing here reacts to the data: it
- * is the sky the grove stands in.
+ * is the sky the garden stands in.
  */
 export function GardenBackdrop() {
   const id = useId().replace(/:/g, '');
@@ -79,7 +83,6 @@ export function GardenBackdrop() {
       </defs>
 
       <rect width="100" height="100" fill={`url(#sun${id})`} />
-      {/* light falling from the top right */}
       <path d="M62 0 L100 0 L100 34 Z" fill={`url(#ray${id})`} />
       <path d="M78 0 L100 0 L100 62 Z" fill={`url(#ray${id})`} opacity=".5" />
 
@@ -90,18 +93,19 @@ export function GardenBackdrop() {
         <DistantStalk key={`m${x}`} x={x} top={i % 2 ? 6 : 14} width={2} tone="#8FAE77" />
       ))}
 
-      {/* the mist that makes those stalks feel far away */}
       <rect width="100" height="100" fill={`url(#mist${id})`} />
     </svg>
   );
 }
 
-/* ── One bamboo ──────────────────────────────────────────────────────────── */
+/* ── The shared plot ─────────────────────────────────────────────────────── */
 
 const VIEW_W = 130;
 const VIEW_H = 210;
-const SOIL_Y = 186;      // where the stalks meet the ground
-const STALK_TOP = 22;    // how high a fully grown stalk reaches
+const SOIL_Y = 186;      // where a plant meets the ground
+const PLANT_TOP = 22;    // how high a fully grown plant reaches
+const CENTER = 65;
+const FULL_H = SOIL_Y - PLANT_TOP;
 
 /** A single leaf, drawn from its attachment point outwards. */
 function Leaf({ x, y, dir, len, tilt, fill, opacity = 1 }) {
@@ -115,14 +119,41 @@ function Leaf({ x, y, dir, len, tilt, fill, opacity = 1 }) {
   );
 }
 
-/**
- * One stalk. `height` is its drawn length in viewBox units; the clip of the
- * parent decides how much of it is visible, so growth stays continuous.
- */
-function Stalk({ baseX, lean, height, width, fill, edge, light, leafFill, leafCount, seed }) {
+/** A trunk that tapers as it rises, with a hint of bark on its shaded side. */
+function Trunk({ from = SOIL_Y, to, lean = 0, width, dark = '#5E4632', light = '#8C6440' }) {
+  const topX = CENTER + lean;
+  const wTop = width * 0.45;
+  const span = from - to;
+  return (
+    <g>
+      <path fill={light}
+        d={`M${CENTER - width} ${from}
+            C${CENTER - width * 0.8} ${from - span * 0.5} ${topX - wTop * 1.4} ${to + span * 0.25} ${topX - wTop} ${to}
+            L${topX + wTop} ${to}
+            C${topX + wTop * 1.4} ${to + span * 0.25} ${CENTER + width * 0.8} ${from - span * 0.5} ${CENTER + width} ${from} Z`} />
+      <path fill={dark} opacity=".5"
+        d={`M${CENTER + width * 0.15} ${from}
+            C${CENTER + width * 0.3} ${from - span * 0.5} ${topX + wTop * 0.2} ${to + span * 0.25} ${topX + wTop * 0.3} ${to}
+            L${topX + wTop} ${to}
+            C${topX + wTop * 1.4} ${to + span * 0.25} ${CENTER + width * 0.8} ${from - span * 0.5} ${CENTER + width} ${from} Z`} />
+    </g>
+  );
+}
+
+/** A branch: one stroke from the trunk to where a canopy sits. */
+function Branch({ x1, y1, x2, y2, width = 4, color = '#6B4A2F' }) {
+  const mx = (x1 + x2) / 2 + (x2 - x1) * 0.1;
+  const my = (y1 + y2) / 2 - 8;
+  return <path d={`M${x1} ${y1} Q${mx} ${my} ${x2} ${y2}`} stroke={color} strokeWidth={width} fill="none" strokeLinecap="round" />;
+}
+
+/* ── Species: bamboo ─────────────────────────────────────────────────────── */
+
+/** One bamboo stalk: stacked internodes, node rings and fanned leaves. */
+function BambooStalk({ baseX, lean, height, width, fill, edge, leafFill, leafCount, seed }) {
   const top = SOIL_Y - height;
   const nodes = Math.max(2, Math.round(height / 26));
-  const xAt = t => baseX + lean * t * t;                    // slight curve, not a tilt
+  const xAt = t => baseX + lean * t * t;
   const wAt = t => width * (1 - 0.34 * t);
 
   const segments = Array.from({ length: nodes }, (_, i) => {
@@ -137,18 +168,15 @@ function Stalk({ baseX, lean, height, width, fill, edge, light, leafFill, leafCo
         <g key={i}>
           <path fill={fill}
             d={`M${s.x0 - s.w0} ${s.y0} L${s.x1 - s.w1} ${s.y1 + 1.6} L${s.x1 + s.w1} ${s.y1 + 1.6} L${s.x0 + s.w0} ${s.y0} Z`} />
-          {/* rim light on the left flank, shadow on the right: gives the tube its volume */}
-          <path fill={light} opacity=".5"
+          <path fill="#FFFFFF" opacity=".5"
             d={`M${s.x0 - s.w0} ${s.y0} L${s.x1 - s.w1} ${s.y1 + 1.6} L${s.x1 - s.w1 * 0.3} ${s.y1 + 1.6} L${s.x0 - s.w0 * 0.3} ${s.y0} Z`} />
           <path fill={edge} opacity=".28"
             d={`M${s.x0 + s.w0 * 0.45} ${s.y0} L${s.x1 + s.w1 * 0.45} ${s.y1 + 1.6} L${s.x1 + s.w1} ${s.y1 + 1.6} L${s.x0 + s.w0} ${s.y0} Z`} />
-          {/* the node ring */}
           <path d={`M${s.x1 - s.w1 - 0.8} ${s.y1 + 1.4} q${s.w1 + 0.8} 1.7 ${(s.w1 + 0.8) * 2} 0`}
             stroke={edge} strokeWidth="1.5" fill="none" strokeLinecap="round" />
         </g>
       ))}
 
-      {/* leaves, fanned out from the upper nodes */}
       {Array.from({ length: leafCount }, (_, i) => {
         const t = 0.52 + (i / Math.max(1, leafCount - 1)) * 0.46;
         const y = SOIL_Y - height * t;
@@ -161,33 +189,218 @@ function Stalk({ baseX, lean, height, width, fill, edge, light, leafFill, leafCo
           </g>
         );
       })}
-      {/* the growing tip */}
       <path d={`M${xAt(1) - wAt(1)} ${top + 3} Q${xAt(1)} ${top - 7} ${xAt(1) + wAt(1)} ${top + 3} Z`} fill={leafFill} />
     </g>
   );
 }
 
-/**
- * A bamboo clump growing straight out of the ground.
- *
- * @param pct    0 → 1, how grown it is
- * @param ripe   true when it can be cut (draws the warm halo and the fireflies)
- * @param tints  colours of the subjects that fed the grove; the leaves borrow
- *               the first of them, so the plant keeps the colours of what is studied
- * @param idle   false stops every animation (used for the locked plots)
- */
-export function BambooPlant({ pct = 0, ripe = false, tints = [], idle = true }) {
-  const id = useId().replace(/:/g, '');
-  const grown = Math.max(0.06, Math.min(1, pct));
-  const revealH = (SOIL_Y - STALK_TOP) * grown + 6;
-  const leafFill = tints[0] || SCENE.leaf;
+function BambooBody({ tint }) {
+  const leafFill = tint || SCENE.leaf;
+  return (
+    <>
+      <g opacity=".62">
+        <BambooStalk baseX={52} lean={-7} height={FULL_H * 0.82} width={5.2} leafCount={3} seed={1}
+          fill="#7FA06A" edge="#5C7A4C" leafFill="#89AE6F" />
+        <BambooStalk baseX={78} lean={6} height={FULL_H * 0.74} width={4.6} leafCount={3} seed={2}
+          fill="#7FA06A" edge="#5C7A4C" leafFill="#89AE6F" />
+      </g>
+      <BambooStalk baseX={65} lean={1} height={FULL_H} width={6} leafCount={4} seed={0}
+        fill={SCENE.leaf} edge={SCENE.leafDeep} leafFill={leafFill} />
+    </>
+  );
+}
 
-  // Three stalks: one tall in the middle, two shorter around it.
-  const stalks = [
-    { baseX: 52, lean: -7, height: (SOIL_Y - STALK_TOP) * 0.82, width: 5.2, leafCount: 3, seed: 1, depth: 1 },
-    { baseX: 78, lean: 6, height: (SOIL_Y - STALK_TOP) * 0.74, width: 4.6, leafCount: 3, seed: 2, depth: 1 },
-    { baseX: 65, lean: 1, height: SOIL_Y - STALK_TOP, width: 6, leafCount: 4, seed: 0, depth: 0 },
-  ];
+/* ── Species: cherry blossom ─────────────────────────────────────────────── */
+
+const SAKURA_CLUSTERS = [
+  { cx: 65, cy: 62, r: 26 }, { cx: 40, cy: 80, r: 20 }, { cx: 91, cy: 82, r: 19 },
+  { cx: 52, cy: 50, r: 16 }, { cx: 80, cy: 52, r: 15 }, { cx: 65, cy: 92, r: 15 },
+];
+const SAKURA_BLOOMS = [[50, 46], [78, 44], [34, 74], [97, 78], [65, 36], [60, 100]];
+
+function SakuraBody() {
+  return (
+    <>
+      <Trunk to={118} width={9} lean={-2} dark="#5A4030" light="#83614A" />
+      <Branch x1={64} y1={130} x2={42} y2={96} width={5} color="#6E5140" />
+      <Branch x1={65} y1={138} x2={92} y2={100} width={5} color="#6E5140" />
+      <Branch x1={63} y1={120} x2={55} y2={78} width={4} color="#6E5140" />
+      <Branch x1={64} y1={118} x2={79} y2={74} width={4} color="#6E5140" />
+
+      {/* blossom masses, darkest first so the light ones sit on top */}
+      {SAKURA_CLUSTERS.map((c, i) => (
+        <circle key={`d${i}`} cx={c.cx + 3} cy={c.cy + 4} r={c.r} fill="#E68CA8" opacity=".85" />
+      ))}
+      {SAKURA_CLUSTERS.map((c, i) => (
+        <circle key={`m${i}`} cx={c.cx} cy={c.cy} r={c.r * 0.92} fill="#F3B3C8" />
+      ))}
+      {SAKURA_CLUSTERS.map((c, i) => (
+        <circle key={`l${i}`} cx={c.cx - 4} cy={c.cy - 5} r={c.r * 0.6} fill="#FBDCE6" opacity=".9" />
+      ))}
+
+      {/* single blossoms catching the light */}
+      {SAKURA_BLOOMS.map(([x, y], i) => (
+        <g key={i}>
+          {[0, 1, 2, 3, 4].map(p => {
+            const a = (p / 5) * Math.PI * 2;
+            return <ellipse key={p} cx={x + Math.cos(a) * 3.4} cy={y + Math.sin(a) * 3.4} rx="2.6" ry="2.2" fill="#FFF3F7" />;
+          })}
+          <circle cx={x} cy={y} r="1.5" fill="#E8A33C" />
+        </g>
+      ))}
+    </>
+  );
+}
+
+/* ── Species: maple ──────────────────────────────────────────────────────── */
+
+/** A five-lobed maple leaf, small enough to read at this size. */
+function MapleLeaf({ x, y, size, fill, rotate = 0 }) {
+  return (
+    <g transform={`translate(${x} ${y}) rotate(${rotate}) scale(${size / 10})`}>
+      <path fill={fill} d="M0 6 L-1.6 2.6 L-6 3.6 L-4.2 0.4 L-9 -1.4 L-4.6 -2.6 L-6.4 -6.6 L-2.2 -4.8 L0 -9.4
+        L2.2 -4.8 L6.4 -6.6 L4.6 -2.6 L9 -1.4 L4.2 0.4 L6 3.6 L1.6 2.6 Z" />
+      <path d="M0 6 V-6" stroke="#7A3B24" strokeWidth=".7" opacity=".45" />
+    </g>
+  );
+}
+
+const MAPLE_LEAVES = [
+  { x: 65, y: 54, size: 30, rot: 0, tone: 0 }, { x: 44, y: 70, size: 26, rot: -25, tone: 1 },
+  { x: 88, y: 70, size: 26, rot: 25, tone: 1 }, { x: 52, y: 44, size: 22, rot: -14, tone: 2 },
+  { x: 80, y: 44, size: 22, rot: 16, tone: 2 }, { x: 33, y: 92, size: 20, rot: -38, tone: 0 },
+  { x: 98, y: 92, size: 20, rot: 38, tone: 2 }, { x: 65, y: 86, size: 24, rot: 8, tone: 1 },
+  { x: 47, y: 104, size: 18, rot: -18, tone: 2 }, { x: 84, y: 106, size: 18, rot: 22, tone: 0 },
+];
+const MAPLE_TONES = ['#C4553A', '#D9773A', '#E0A03C'];
+
+function MapleBody() {
+  return (
+    <>
+      <Trunk to={112} width={10} lean={1} dark="#553A26" light="#7E5A3C" />
+      <Branch x1={64} y1={132} x2={44} y2={100} width={5.5} color="#6B4A2F" />
+      <Branch x1={66} y1={136} x2={88} y2={102} width={5.5} color="#6B4A2F" />
+      <Branch x1={64} y1={116} x2={52} y2={86} width={4} color="#6B4A2F" />
+      <Branch x1={65} y1={114} x2={80} y2={84} width={4} color="#6B4A2F" />
+
+      {/* soft canopy behind the leaves, so the crown reads as one mass */}
+      <ellipse cx="65" cy="72" rx="42" ry="34" fill="#C4553A" opacity=".22" />
+      <ellipse cx="55" cy="62" rx="26" ry="22" fill="#E0A03C" opacity=".16" />
+
+      {MAPLE_LEAVES.map((l, i) => (
+        <MapleLeaf key={i} x={l.x} y={l.y} size={l.size} rotate={l.rot} fill={MAPLE_TONES[l.tone]} />
+      ))}
+    </>
+  );
+}
+
+/* ── Species: sunflower ──────────────────────────────────────────────────── */
+
+const HEAD = { x: 65, y: 62, r: 20 };
+
+function SunflowerBody({ id }) {
+  return (
+    <>
+      <path d={`M65 ${SOIL_Y} C62 150 68 110 65 ${HEAD.y + HEAD.r - 4}`}
+        stroke="#4F7A38" strokeWidth="7" fill="none" strokeLinecap="round" />
+      <path d={`M65 ${SOIL_Y} C63 150 67 110 65 ${HEAD.y + HEAD.r - 4}`}
+        stroke="#6E9B4E" strokeWidth="2.6" fill="none" strokeLinecap="round" opacity=".8" />
+
+      <Leaf x={64} y={150} dir={-1} len={34} tilt={12} fill="#4F7A38" />
+      <Leaf x={66} y={132} dir={1} len={30} tilt={14} fill="#5E8C42" />
+      <Leaf x={64} y={112} dir={-1} len={24} tilt={10} fill="#6E9B4E" />
+
+      {/* petals: two offset rings, so the head has depth */}
+      {Array.from({ length: 13 }, (_, i) => {
+        const a = (i / 13) * Math.PI * 2;
+        return (
+          <ellipse key={`o${i}`} rx="7" ry="15" fill="#E8B33C"
+            transform={`translate(${HEAD.x + Math.cos(a) * 16} ${HEAD.y + Math.sin(a) * 16}) rotate(${(a * 180) / Math.PI + 90})`} />
+        );
+      })}
+      {Array.from({ length: 13 }, (_, i) => {
+        const a = ((i + 0.5) / 13) * Math.PI * 2;
+        return (
+          <ellipse key={`i${i}`} rx="6" ry="13" fill={`url(#petal${id})`}
+            transform={`translate(${HEAD.x + Math.cos(a) * 13} ${HEAD.y + Math.sin(a) * 13}) rotate(${(a * 180) / Math.PI + 90})`} />
+        );
+      })}
+
+      <circle cx={HEAD.x} cy={HEAD.y} r={HEAD.r * 0.62} fill="#6B4A2F" />
+      <circle cx={HEAD.x} cy={HEAD.y} r={HEAD.r * 0.62} fill={`url(#seeds${id})`} />
+      {/* seeds laid out on the golden angle, like a real head */}
+      {Array.from({ length: 18 }, (_, i) => {
+        const a = i * 2.39996;
+        const rr = 1.6 + Math.sqrt(i) * 2.3;
+        return <circle key={i} cx={HEAD.x + Math.cos(a) * rr} cy={HEAD.y + Math.sin(a) * rr} r="1.1" fill="#4B3220" opacity=".6" />;
+      })}
+    </>
+  );
+}
+
+/* ── Species: pine ───────────────────────────────────────────────────────── */
+
+const PINE_TIERS = [
+  { y: 168, half: 44, h: 46 },
+  { y: 136, half: 38, h: 44 },
+  { y: 104, half: 30, h: 40 },
+  { y: 74, half: 21, h: 36 },
+];
+
+function PineBody() {
+  return (
+    <>
+      <Trunk to={150} width={7} dark="#4E3724" light="#75543A" />
+      {PINE_TIERS.map((tier, i) => {
+        const top = tier.y - tier.h;
+        // a jagged skirt instead of a flat triangle: reads as needles
+        const steps = 6;
+        const points = Array.from({ length: steps + 1 }, (_, s) => {
+          const x = CENTER - tier.half + (s / steps) * tier.half * 2;
+          return `${x} ${tier.y + (s % 2 ? 0 : -6)}`;
+        });
+        return (
+          <g key={i}>
+            <path fill={i % 2 ? '#3E6B2E' : SCENE.leafDeep} d={`M${CENTER} ${top} L${points.join(' L')} Z`} />
+            <path fill="#FFFFFF" opacity=".12"
+              d={`M${CENTER} ${top} L${CENTER - tier.half} ${tier.y} L${CENTER - tier.half * 0.35} ${tier.y} Z`} />
+          </g>
+        );
+      })}
+      {/* two cones hanging in the branches, and the leader at the top */}
+      <ellipse cx="48" cy="120" rx="4" ry="6" fill="#8C6440" transform="rotate(-18 48 120)" />
+      <ellipse cx="84" cy="152" rx="4.5" ry="6.5" fill="#7A5634" transform="rotate(14 84 152)" />
+      <path d={`M${CENTER} 34 l-4.5 11 l9 0 Z`} fill="#3E6B2E" />
+    </>
+  );
+}
+
+/* ── The plant ───────────────────────────────────────────────────────────── */
+
+const BODIES = {
+  bamboo: { Body: BambooBody, growth: 'clip' },
+  sakura: { Body: SakuraBody, growth: 'scale' },
+  maple: { Body: MapleBody, growth: 'scale' },
+  sunflower: { Body: SunflowerBody, growth: 'scale' },
+  pine: { Body: PineBody, growth: 'scale' },
+};
+
+/**
+ * One plant growing out of the ground, whatever the species.
+ *
+ * @param species one of BODIES (falls back to bamboo)
+ * @param pct     0 → 1, how grown it is
+ * @param ripe    true when it can be cut (warm halo and fireflies)
+ * @param tints   colours of the subjects that fed the garden (bamboo leaves)
+ * @param idle    false stops every animation
+ */
+export function GardenPlant({ species = 'bamboo', pct = 0, ripe = false, tints = [], idle = true }) {
+  const id = useId().replace(/:/g, '');
+  const kind = BODIES[species] || BODIES.bamboo;
+  const grown = Math.max(0.06, Math.min(1, pct));
+  const revealH = FULL_H * grown + 6;
+  const scale = kind.growth === 'scale' ? 0.2 + 0.8 * grown : 1;
+  const Body = kind.Body;
 
   return (
     <div style={{ position: 'relative', width: '100%' }}>
@@ -204,7 +417,7 @@ export function BambooPlant({ pct = 0, ripe = false, tints = [], idle = true }) 
       <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} style={{ width: '100%', display: 'block', overflow: 'visible' }}>
         <defs>
           <clipPath id={`grow${id}`}>
-            <motion.rect x="-30" width={VIEW_W + 60}
+            <motion.rect x="-40" width={VIEW_W + 80}
               initial={false}
               animate={{ y: SOIL_Y - revealH, height: revealH }}
               transition={{ duration: .9, ease: [.22, 1, .36, 1] }} />
@@ -213,29 +426,32 @@ export function BambooPlant({ pct = 0, ripe = false, tints = [], idle = true }) 
             <stop offset="0%" stopColor={SCENE.soilDark} stopOpacity=".35" />
             <stop offset="100%" stopColor={SCENE.soilDark} stopOpacity="0" />
           </radialGradient>
+          <linearGradient id={`petal${id}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#F7DC8A" />
+            <stop offset="100%" stopColor="#E8B33C" />
+          </linearGradient>
+          <radialGradient id={`seeds${id}`} cx="38%" cy="34%" r="70%">
+            <stop offset="0%" stopColor="#8A6238" stopOpacity=".9" />
+            <stop offset="100%" stopColor="#4B3220" stopOpacity=".9" />
+          </radialGradient>
         </defs>
 
-        {/* ground shadow */}
-        <ellipse cx="65" cy={SOIL_Y + 6} rx="46" ry="12" fill={`url(#shade${id})`} />
+        <ellipse cx={CENTER} cy={SOIL_Y + 6} rx="46" ry="12" fill={`url(#shade${id})`} />
 
         <motion.g
           animate={idle ? { rotate: ripe ? [0, 1.2, 0, -1.2, 0] : [0, .6, 0, -.6, 0] } : {}}
           transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}
-          style={{ originX: '65px', originY: `${SOIL_Y}px` }}>
-          <g clipPath={`url(#grow${id})`}>
-            {stalks.map((s, i) => (
-              <g key={i} opacity={s.depth ? .62 : 1}>
-                <Stalk {...s}
-                  fill={s.depth ? '#7FA06A' : SCENE.leaf}
-                  edge={s.depth ? '#5C7A4C' : SCENE.leafDeep}
-                  light="#FFFFFF"
-                  leafFill={s.depth ? '#89AE6F' : leafFill} />
-              </g>
-            ))}
-          </g>
+          style={{ originX: `${CENTER}px`, originY: `${SOIL_Y}px` }}>
+          <motion.g
+            initial={false} animate={{ scale }} transition={{ duration: .9, ease: [.22, 1, .36, 1] }}
+            style={{ originX: `${CENTER}px`, originY: `${SOIL_Y}px` }}>
+            <g clipPath={kind.growth === 'clip' ? `url(#grow${id})` : undefined}>
+              <Body tint={tints[0]} id={id} />
+            </g>
+          </motion.g>
         </motion.g>
 
-        {/* soil mound and grass, drawn over the feet of the stalks */}
+        {/* soil mound and grass, drawn over the foot of the plant */}
         <path d={`M30 ${SOIL_Y} Q65 ${SOIL_Y - 11} 100 ${SOIL_Y} Q65 ${SOIL_Y + 13} 30 ${SOIL_Y} Z`} fill={SCENE.soil} />
         <path d={`M30 ${SOIL_Y} Q65 ${SOIL_Y - 11} 100 ${SOIL_Y} Q65 ${SOIL_Y - 4} 30 ${SOIL_Y} Z`} fill={SCENE.soilDark} opacity=".4" />
         <g stroke={SCENE.leafDeep} strokeWidth="1.7" strokeLinecap="round" fill="none" opacity=".62">
@@ -244,7 +460,6 @@ export function BambooPlant({ pct = 0, ripe = false, tints = [], idle = true }) 
           <path d={`M88 ${SOIL_Y} q6 -7 2 -12`} />
           <path d={`M94 ${SOIL_Y + 1} q-4 -7 -9 -9`} />
         </g>
-        {/* a couple of pebbles, so the ground is not a flat blob */}
         <ellipse cx="36" cy={SOIL_Y + 5} rx="5" ry="2.4" fill={SCENE.soilDark} opacity=".3" />
         <ellipse cx="96" cy={SOIL_Y + 7} rx="4" ry="2" fill={SCENE.soilDark} opacity=".22" />
 
@@ -262,99 +477,19 @@ export function BambooPlant({ pct = 0, ripe = false, tints = [], idle = true }) 
 
 /* ── Empty plot ──────────────────────────────────────────────────────────── */
 
-/** A plot with no bamboo yet: turned soil, a dotted outline and a shoot. */
+/** A plot with nothing in it yet: turned soil, a dotted outline and a shoot. */
 export function EmptyPlot() {
   return (
     <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} aria-hidden="true"
       style={{ width: '100%', display: 'block', overflow: 'visible' }}>
-      <ellipse cx="65" cy={SOIL_Y + 4} rx="40" ry="11" fill={SCENE.soil} opacity=".28" />
-      <ellipse cx="65" cy={SOIL_Y + 4} rx="40" ry="11" fill="none" stroke={SCENE.soilDark}
+      <ellipse cx={CENTER} cy={SOIL_Y + 4} rx="40" ry="11" fill={SCENE.soil} opacity=".28" />
+      <ellipse cx={CENTER} cy={SOIL_Y + 4} rx="40" ry="11" fill="none" stroke={SCENE.soilDark}
         strokeWidth="1.6" strokeDasharray="5 6" opacity=".55" />
-      {/* a young shoot waiting for a place */}
       <g opacity=".5">
         <path d={`M65 ${SOIL_Y} q-1 -14 1 -22`} stroke={SCENE.leaf} strokeWidth="4" fill="none" strokeLinecap="round" />
         <Leaf x={66} y={SOIL_Y - 18} dir={1} len={13} tilt={6} fill={SCENE.leafLight} />
         <Leaf x={65} y={SOIL_Y - 12} dir={-1} len={11} tilt={4} fill={SCENE.leaf} />
       </g>
     </svg>
-  );
-}
-
-/* ── The mascot ──────────────────────────────────────────────────────────── */
-
-/**
- * The red panda of the garden — the app's identity anchor, sitting in the
- * grass and breathing. Drawn small: it is a companion, not a character screen.
- */
-export function RedPanda({ width = 92, asleep = false }) {
-  const id = useId().replace(/:/g, '');
-  return (
-    <motion.svg width={width} viewBox="0 0 120 110" aria-hidden="true"
-      animate={{ y: [0, -1.5, 0] }} transition={{ duration: 4.2, repeat: Infinity, ease: 'easeInOut' }}
-      style={{ display: 'block', overflow: 'visible' }}>
-      <defs>
-        <linearGradient id={`fur${id}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#D2684A" />
-          <stop offset="100%" stopColor={SCENE.panda} />
-        </linearGradient>
-      </defs>
-
-      <ellipse cx="60" cy="101" rx="34" ry="7" fill={SCENE.soilDark} opacity=".22" />
-
-      {/* tail, swaying */}
-      <motion.g style={{ originX: '86px', originY: '86px' }}
-        animate={{ rotate: [0, -7, 0, 7, 0] }} transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}>
-        <path d="M84 88 q24 6 30 -12 q4 -14 -6 -18 q-8 -3 -12 6 q-4 10 -14 12 Z" fill={SCENE.pandaDark} />
-        <path d="M96 84 q14 2 18 -10" stroke={SCENE.cream} strokeWidth="6" fill="none" strokeLinecap="round" opacity=".85" />
-        <path d="M104 70 q8 -2 8 -10" stroke={SCENE.cream} strokeWidth="5" fill="none" strokeLinecap="round" opacity=".7" />
-      </motion.g>
-
-      {/* body */}
-      <motion.ellipse cx="58" cy="82" rx="30" ry="22" fill={`url(#fur${id})`}
-        animate={{ ry: [22, 22.9, 22] }} transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }} />
-      <ellipse cx="58" cy="88" rx="18" ry="13" fill={SCENE.cream} opacity=".9" />
-      {/* front paws */}
-      <ellipse cx="46" cy="97" rx="8" ry="5" fill={SCENE.pandaDark} />
-      <ellipse cx="70" cy="97" rx="8" ry="5" fill={SCENE.pandaDark} />
-
-      {/* head */}
-      <g>
-        {/* ears */}
-        <path d="M30 44 q-4 -16 10 -16 q6 2 6 12 Z" fill={SCENE.panda} />
-        <path d="M34 42 q-2 -9 6 -10 q3 1 3 7 Z" fill={SCENE.cream} />
-        <path d="M86 44 q4 -16 -10 -16 q-6 2 -6 12 Z" fill={SCENE.panda} />
-        <path d="M82 42 q2 -9 -6 -10 q-3 1 -3 7 Z" fill={SCENE.cream} />
-
-        <ellipse cx="58" cy="50" rx="30" ry="25" fill={`url(#fur${id})`} />
-        {/* cream mask */}
-        <path d="M58 34 q-16 0 -20 14 q-3 12 8 18 q12 6 24 0 q11 -6 8 -18 q-4 -14 -20 -14 Z" fill={SCENE.cream} />
-        <ellipse cx="42" cy="56" rx="7" ry="5" fill="#F2D2B8" opacity=".75" />
-        <ellipse cx="74" cy="56" rx="7" ry="5" fill="#F2D2B8" opacity=".75" />
-
-        {/* eyes, with a blink every few seconds */}
-        <motion.g animate={asleep ? {} : { scaleY: [1, 1, .1, 1] }}
-          transition={{ duration: 4.6, repeat: Infinity, times: [0, .86, .9, .94], ease: 'easeInOut' }}
-          style={{ originY: '48px' }}>
-          {asleep ? (
-            <>
-              <path d="M44 48 q4 4 8 0" stroke={SCENE.ink} strokeWidth="2.4" fill="none" strokeLinecap="round" />
-              <path d="M64 48 q4 4 8 0" stroke={SCENE.ink} strokeWidth="2.4" fill="none" strokeLinecap="round" />
-            </>
-          ) : (
-            <>
-              <ellipse cx="48" cy="48" rx="4.2" ry="4.6" fill={SCENE.ink} />
-              <ellipse cx="68" cy="48" rx="4.2" ry="4.6" fill={SCENE.ink} />
-              <circle cx="49.4" cy="46.4" r="1.5" fill="#fff" opacity=".9" />
-              <circle cx="69.4" cy="46.4" r="1.5" fill="#fff" opacity=".9" />
-            </>
-          )}
-        </motion.g>
-
-        {/* muzzle */}
-        <path d="M58 56 q-5 0 -5 3.5 q0 3.5 5 3.5 q5 0 5 -3.5 q0 -3.5 -5 -3.5 Z" fill={SCENE.ink} />
-        <path d="M58 63 q-4 5 -9 2" stroke={SCENE.ink} strokeWidth="1.8" fill="none" strokeLinecap="round" />
-        <path d="M58 63 q4 5 9 2" stroke={SCENE.ink} strokeWidth="1.8" fill="none" strokeLinecap="round" />
-      </g>
-    </motion.svg>
   );
 }
