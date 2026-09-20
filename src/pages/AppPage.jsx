@@ -23,7 +23,7 @@ import {
   CalendarDays, CheckSquare, TrendingUp, Star, FileText,
   Layers, RefreshCw, CalendarClock, BarChart2, Users,
   BookOpen, HandMetal, Power, Zap, Play,
-  LibraryBig, Palette, TreePine,
+  LibraryBig, Palette, TreePine, Wrench,
 } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { isDue } from '../data/repetition';
@@ -31,6 +31,7 @@ import { GroupSessionEngine } from '../components/GroupSessionEngine';
 import { ChronoStack } from '../components/ChronoStack';
 import { reportSaveError } from '../lib/notify';
 import { resolveOwnPhoto, adoptAccountPhoto } from '../lib/profilePhoto';
+import { visibleTabs, featureOfTab, isEnabled } from '../lib/features';
 import { startPresence, clearPresence } from '../lib/presence';
 import { isAdmin, ADMIN_UIDS } from '../lib/admin';
 import { auditBadges } from '../lib/badgeAudit';
@@ -430,6 +431,30 @@ function SubjectModal({ onAdd, onDelete, onEdit, subjects, onClose }) {
   );
 }
 
+/**
+ * What a student sees where a closed page would have been.
+ *
+ * It says the feature is closed FOR NOW and that nothing was lost, because
+ * that is true: a flag only hides (lib/features.js), and everything comes
+ * back exactly as it was when the flag is turned on again.
+ */
+function ClosedPage({ admin }) {
+  const { t } = useTranslation();
+  return (
+    <div style={{ maxWidth: 420, margin: '3rem auto', textAlign: 'center', display: 'flex',
+      flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+      <span style={{ width: 46, height: 46, borderRadius: '50%', display: 'flex', alignItems: 'center',
+        justifyContent: 'center', background: 'var(--bg-card)', color: 'var(--text-muted)' }}>
+        <Wrench size={20} aria-hidden="true" />
+      </span>
+      <div style={{ fontSize: '.9rem', fontWeight: 700, color: 'var(--text-primary)' }}>{t('features.closedTitle')}</div>
+      <div style={{ fontSize: '.78rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+        {t(admin ? 'features.closedAdmin' : 'features.closedText')}
+      </div>
+    </div>
+  );
+}
+
 // Lightweight fallback shown while a lazily-loaded tab chunk downloads. Mirrors
 // the subtle pulse the individual pages use for their own loading states.
 function PageFallback() {
@@ -441,9 +466,13 @@ function PageFallback() {
   );
 }
 
-export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked, setDevUnlocked }) {
+export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked, setDevUnlocked, features = {} }) {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState(() => tabFromUrl() || 'planning');
+  // What the tab bar offers, and what a closed tab does (lib/features.js).
+  const admin = isAdmin(user);
+  const shownTabs = visibleTabs(TABS, features, admin);
+  const activeClosed = !isEnabled(features, featureOfTab(activeTab));
 
   // Notifications: open the requested tab (URL on a cold start, message when already open).
   useEffect(() => {
@@ -827,12 +856,15 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
       </div>
 
       {/* ── Tabs bar ── */}
+      {/* Closed features (lib/features.js) leave the bar; an administrator
+          keeps them, with a dot, so what is being fixed stays reachable. */}
       <div style={{ overflowX: 'auto', scrollbarWidth: 'none',
         background: 'var(--bg-nav)', borderBottom: '1px solid var(--border)',
         position: 'sticky', top: 56, zIndex: 99 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 8px', width: 'max-content', minWidth: '100%', justifyContent: 'center' }}>
-          {TABS.map(tab => {
+          {shownTabs.map(tab => {
             const isActive = activeTab === tab.id;
+            const closed = !isEnabled(features, featureOfTab(tab.id));
             return (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                 style={{ display: 'flex', alignItems: 'center', gap: 4,
@@ -843,6 +875,7 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
                     prefs?.tabColorMode === 'uniform' ? (prefs?.tabUniformColor || tab.color) + '18' :
                     tab.color + '18'
                   }` : 'transparent',
+                  opacity: closed ? .55 : 1,
                   color: isActive ? (
                     prefs?.tabColorMode === 'accent' ? 'var(--accent)' :
                     prefs?.tabColorMode === 'uniform' ? (prefs?.tabUniformColor || '#4A90D9') :
@@ -880,7 +913,9 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
             initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}
             transition={{ duration: 0.2 }}>
             <Suspense fallback={<PageFallback />}>
-              {activeTab === 'groups'
+              {activeClosed && !admin
+                ? <ClosedPage admin={false} />
+                : activeTab === 'groups'
                 ? <PageGroups user={user} prefs={prefs} unreadByGroup={unreadByGroup}
                     pendingConv={pendingConv} onConvOpened={() => setPendingConv(null)}
                     onMarkRead={(groupId) => {
@@ -896,7 +931,10 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
                 ? <PageProfile user={user} onOpenConv={(friend) => { setPendingConv(friend); setActiveTab('groups'); }} />
                 : activeTab === 'stats'
                 ? <PageStats user={user} onOpenConv={(friend) => { setPendingConv(friend); setActiveTab('groups'); }} />
-                : <ActivePage user={user} prefs={prefs} onTuto={setTutoPage} onNavigate={setActiveTab} />
+                : <>
+                  {activeClosed && admin && <ClosedPage admin />}
+                  <ActivePage user={user} prefs={prefs} onTuto={setTutoPage} onNavigate={setActiveTab} />
+                </>
               }
             </Suspense>
           </motion.div>

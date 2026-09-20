@@ -28,6 +28,7 @@ import { db } from '../firebase/config';
 import FlashcardStack from '../components/FlashcardStack';
 import FlashcardMasonry from '../components/FlashcardMasonry';
 import { useTranslation } from '../i18n';
+import { useFeature } from '../lib/appConfig';
 import { GuidedTour, useGuidedTour, TourButton } from '../components/GuidedTour';
 import { reportSaveError } from '../lib/notify';
 import { Sparkles, X } from 'lucide-react';
@@ -536,6 +537,8 @@ export default function PageFlashcards({ user }) {
 
   function setSelSubjSafe(v) { selSubjRef.current = v; setSelSubj(v); }
   const [tab, setTab]                     = useState('mine');  // 'mine' | 'hub'
+  // The shared decks can be closed from the console (lib/features.js).
+  const hubOpen = useFeature('publicDecks');
   const [view, setView]                   = useState('grid');  // 'grid' | 'deck' | 'quiz'
   const [quizSubset, setQuizSubset]       = useState('all');   // 'all' | 'missed'
   const [showCardModal, setShowCardModal] = useState(false);
@@ -741,7 +744,7 @@ export default function PageFlashcards({ user }) {
       <TourButton onClick={tour.start} label={t('common.guidedTour')} align='flex-start' />
 
       <div data-tour="tour-flash-tabs" style={{ display: 'flex', gap: 4, background: 'var(--bg-card)', padding: 4, borderRadius: 12, alignSelf: 'flex-start' }}>
-        {[{ v: 'mine', l: `📚 ${t('flashcards.myCards')}` }, { v: 'hub', l: `🌍 ${t('flashcards.community')}` }].map(tb => (
+        {[{ v: 'mine', l: `📚 ${t('flashcards.myCards')}` }, ...(hubOpen ? [{ v: 'hub', l: `🌍 ${t('flashcards.community')}` }] : [])].map(tb => (
           <button key={tb.v} onClick={() => { setTab(tb.v); setView('grid'); }}
             style={{ padding: '7px 16px', borderRadius: 9, border: 'none', cursor: 'pointer', fontSize: '.82rem', fontWeight: 700,
               background: tab === tb.v ? 'var(--accent-subtle)' : 'transparent',

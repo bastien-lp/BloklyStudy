@@ -18,6 +18,7 @@ import GardenTab from '../components/GardenTab';
 import { readGarden, writeGarden, afterCut, cutValue, nextSlotPrice, MAX_SLOTS } from '../lib/bambooGarden';
 import { questState, claimQuest } from '../lib/dailyQuests';
 import DailyQuests from '../components/DailyQuests';
+import { useFeature } from '../lib/appConfig';
 
 // Affiche soit l'image de l'objet, soit son emoji en repli
 function ItemVisual({ item, size }) {
@@ -44,6 +45,7 @@ export default function PageReserve({ user, prefs }) {
   // The day of the quests is frozen when the page opens, so the list shown and
   // the claim that pays it always agree (a render must not read the clock).
   const [questDay] = useState(() => new Date());
+  const questsOpen = useFeature('dailyQuests');
   const [reserve, setReserve] = useState({
     studyTime: {}, harvested: {}, coins: 0,
     bamboo: { v: 2, pool: 0, slots: 1, by: {} },
@@ -371,8 +373,10 @@ export default function PageReserve({ user, prefs }) {
         {tab === 'garden' && (
           <motion.div key="garden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <DailyQuests state={questState(main || {}, reserve, user.uid, questDay)}
-              onClaim={claimDailyQuest} busyId={claiming} />
+            {questsOpen && (
+              <DailyQuests state={questState(main || {}, reserve, user.uid, questDay)}
+                onClaim={claimDailyQuest} busyId={claiming} />
+            )}
             <GardenTab garden={reserve.bamboo} subjects={subjects} coins={reserve.coins}
               species={prefs?.plantId} onCut={cutGarden} onBuyPlot={buyPlot} />
           </motion.div>

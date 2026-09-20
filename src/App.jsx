@@ -91,7 +91,8 @@ export default function App() {
             {/* Announcement / "maintenance is on" notice, above everything. */}
             <SystemBanner message={config.systemMessage} maintenance={config.maintenance && admin} />
             <Suspense fallback={<LoadingScreen />}>
-              <AppPage user={user} prefs={prefs} setPrefs={setAccountPrefs} setUserXp={setUserXp} devUnlocked={devUnlocked} setDevUnlocked={setDevUnlocked} />
+              <AppPage user={user} prefs={prefs} setPrefs={setAccountPrefs} setUserXp={setUserXp}
+                devUnlocked={devUnlocked} setDevUnlocked={setDevUnlocked} features={config.features} />
             </Suspense>
           </ErrorBoundary>
         )}

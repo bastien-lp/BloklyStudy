@@ -32,6 +32,7 @@ import DocLibrary from '../components/docs/DocLibrary';
 import ChapterNotesModal from '../components/docs/ChapterNotesModal';
 import { annotationSummary } from '../lib/docs';
 import LibraryBrowser from '../components/docs/LibraryBrowser';
+import { useFeature } from '../lib/appConfig';
 
 const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
 
@@ -300,6 +301,9 @@ export default function PageSyntheses({ user }) {
   const [filter, setFilter]     = useState('all'); // 'all' | 'todo' | 'wip' | 'done'
   const [pseudo, setPseudo]     = useState(user?.displayName || user?.email?.split('@')[0] || '');
   const [view, setView]         = useState('progress'); // 'progress' | 'docs' | 'library'
+  // Tools an administrator can close from the console (lib/features.js).
+  const documentsOpen = useFeature('documents');
+  const libraryOpen = useFeature('library');
   const [profile, setProfile]   = useState(null);       // main.profile (school, year) for the library
   const [docFocus, setDocFocus] = useState(null);       // { subjectId, chapterIdx } | null
   const docs = useDocs(user);
@@ -402,8 +406,8 @@ export default function PageSyntheses({ user }) {
           style={{ display: 'flex', alignSelf: 'flex-start', gap: 4, padding: 4, borderRadius: 99, background: 'var(--bg-card)' }}>
           {[
             { v: 'progress', icon: ListChecks, label: t('docs.tabProgress') },
-            { v: 'docs', icon: FolderOpen, label: t('docs.tabDocs'), count: docs.docs.length },
-            { v: 'library', icon: Library, label: t('library.tab') },
+            ...(documentsOpen ? [{ v: 'docs', icon: FolderOpen, label: t('docs.tabDocs'), count: docs.docs.length }] : []),
+            ...(libraryOpen ? [{ v: 'library', icon: Library, label: t('library.tab') }] : []),
           ].map(tab => (
             <button key={tab.v} role="tab" aria-selected={view === tab.v}
               onClick={() => { setView(tab.v); if (tab.v === 'docs') setDocFocus(null); }}

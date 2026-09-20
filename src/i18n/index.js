@@ -1335,6 +1335,11 @@ const fr = {
     cuisine: "La cuisine",
     salleDeBains: "La salle de bains",
   },
+  features: {
+    closedTitle: "Fonctionnalité momentanément fermée",
+    closedText: "Elle revient bientôt. Rien n'a été perdu : tes données t'attendent telles quelles.",
+    closedAdmin: "Fermée pour tes utilisateurs. Toi, tu continues d'y accéder — rouvre-la depuis la console, onglet Config.",
+  },
   quests: {
     title: "Quêtes du jour",
     progress: "{done} sur {total} terminées · elles changent chaque jour",
@@ -3316,6 +3321,11 @@ const en = {
     bureau: "The study",
     cuisine: "The kitchen",
     salleDeBains: "The bathroom",
+  },
+  features: {
+    closedTitle: "This feature is closed for now",
+    closedText: "It will be back shortly. Nothing was lost: your data is waiting exactly as you left it.",
+    closedAdmin: "Closed for your users. You still have access — reopen it from the console, Config tab.",
   },
   quests: {
     title: "Today's quests",
@@ -5809,6 +5819,11 @@ const es = {
     cuisine: "La cocina",
     salleDeBains: "El baño",
   },
+  features: {
+    closedTitle: "Función cerrada por ahora",
+    closedText: "Volverá pronto. No se ha perdido nada: tus datos te esperan tal cual.",
+    closedAdmin: "Cerrada para tus usuarios. Tú sigues teniendo acceso: vuelve a abrirla desde la consola, pestaña Config.",
+  },
   quests: {
     title: "Misiones del día",
     progress: "{done} de {total} completadas · cambian cada día",
@@ -7788,6 +7803,11 @@ const de = {
     bureau: "Das Arbeitszimmer",
     cuisine: "Die Küche",
     salleDeBains: "Das Badezimmer",
+  },
+  features: {
+    closedTitle: "Diese Funktion ist vorerst geschlossen",
+    closedText: "Sie kommt bald zurück. Nichts ist verloren: deine Daten warten unverändert auf dich.",
+    closedAdmin: "Für deine Nutzer geschlossen. Du hast weiterhin Zugriff — öffne sie wieder in der Konsole, Tab Config.",
   },
   quests: {
     title: "Aufgaben des Tages",

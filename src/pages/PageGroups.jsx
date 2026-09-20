@@ -44,6 +44,7 @@ import LiveQuiz from '../components/quiz/LiveQuiz';
 import { subscribeQuiz, isQuizStale } from '../lib/groupQuiz';
 import { notifyGroup } from '../lib/notifications';
 import GroupGrove from '../components/GroupGrove';
+import { useFeature } from '../lib/appConfig';
 
 function generateCode() {
   return 'BLK-' + Math.random().toString(36).slice(2, 6).toUpperCase();
@@ -752,7 +753,12 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
   const [showQuiz, setShowQuiz]           = useState(false); // live quiz: full-screen game
   const [quizLive, setQuizLive]           = useState(null);  // the group's running quiz (null if none / over)
   const [showGrove, setShowGrove]         = useState(false); // the group's weekly grove
-  const docsEnabled = isDocsAvailable();
+  // Tools an administrator can close from the console (lib/features.js).
+  const quizOpen = useFeature('quiz');
+  const sessionsOpen = useFeature('groupSessions');
+  const groveOpen = useFeature('groupGrove');
+  const documentsOpen = useFeature('documents');
+  const docsEnabled = isDocsAvailable() && documentsOpen;
   const [msgLimit, setMsgLimit]   = useState(40);   // pagination window (latest N)
   const [hasMore, setHasMore]     = useState(false);// whether older messages exist
   const [replyTo, setReplyTo]     = useState(null); // { id, pseudo, preview }
@@ -1407,9 +1413,9 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
                 { icon: '🃏', label: t('groups.flashcard'), action: () => { setShowCardShare(true); setShowTools(false); } },
                 { icon: '🔗', label: t('groups.link'), action: () => { setShowLinkShare(true); setShowTools(false); } },
                 ...(docsEnabled ? [{ icon: <FolderOpen size={14} aria-hidden="true" />, label: t('groups.document'), action: () => { setShowDocPicker(true); setShowTools(false); } }] : []),
-                { icon: <Trophy size={14} aria-hidden="true" />, label: t('quiz.tool'), action: () => { openQuizTool(); setShowTools(false); } },
-                { icon: <Trees size={14} aria-hidden="true" />, label: t('grove.tool'), action: () => { setShowGrove(true); setShowTools(false); } },
-                { icon: '⏱', label: t('groups.sessionStart'), action: () => { setShowNewSession(true); setShowTools(false); } },
+                ...(quizOpen ? [{ icon: <Trophy size={14} aria-hidden="true" />, label: t('quiz.tool'), action: () => { openQuizTool(); setShowTools(false); } }] : []),
+                ...(groveOpen ? [{ icon: <Trees size={14} aria-hidden="true" />, label: t('grove.tool'), action: () => { setShowGrove(true); setShowTools(false); } }] : []),
+                ...(sessionsOpen ? [{ icon: '⏱', label: t('groups.sessionStart'), action: () => { setShowNewSession(true); setShowTools(false); } }] : []),
               ].map((tool, i) => (
                 <motion.button key={i} whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={tool.action}
                   style={{ padding: '7px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-card-hover)', color: 'var(--text-secondary)', fontSize: '.78rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>

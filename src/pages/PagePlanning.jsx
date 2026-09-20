@@ -28,6 +28,7 @@ import { useTranslation } from '../i18n';
 import { formatDuration } from '../lib/duration';
 import { pendingAutoBlocks } from '../lib/autoPlan';
 import AutoPlanModal from '../components/AutoPlanModal';
+import { useFeature } from '../lib/appConfig';
 import { reportSaveError } from '../lib/notify';
 import { CalendarsModal, ExternalEventBlock, AllDayEventChips } from '../components/ExternalCalendars';
 import {
@@ -665,6 +666,9 @@ export default function PagePlanning({ user }) {
   const [showTemplates, setShowTemplates] = useState(false);
   const [showCalendars, setShowCalendars] = useState(false);
   const [showAutoPlan, setShowAutoPlan]   = useState(false);
+  // Tools an administrator can close from the console (lib/features.js).
+  const autoPlanOpen = useFeature('autoPlan');
+  const calendarOpen = useFeature('calendarImport');
 
   // Imported (.ics) calendars — read-only overlay, never merged into `blocks`.
   const [calendars, setCalendars]           = useState([]);
@@ -974,13 +978,13 @@ export default function PagePlanning({ user }) {
           <motion.button aria-label={t('a11y.redo')} whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={redo}
             disabled={!redoStack.current.length} title={t('planning.redoTitle')}
             style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.85rem', opacity: redoStack.current.length ? 1 : .4 }}><Redo2 size={15} strokeWidth={2} /></motion.button>
-          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={() => setShowAutoPlan(true)}
+          {autoPlanOpen && <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={() => setShowAutoPlan(true)}
             title={t('autoPlan.title')} aria-label={t('autoPlan.title')}
-            style={{ height: 30, padding: '0 10px', borderRadius: 8, border: '1px solid var(--accent)', background: 'var(--accent-subtle)', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: '.74rem', fontWeight: 700 }}><Wand2 size={15} strokeWidth={2} /><span className="hide-mobile">{t('autoPlan.button')}</span></motion.button>
+            style={{ height: 30, padding: '0 10px', borderRadius: 8, border: '1px solid var(--accent)', background: 'var(--accent-subtle)', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: '.74rem', fontWeight: 700 }}><Wand2 size={15} strokeWidth={2} /><span className="hide-mobile">{t('autoPlan.button')}</span></motion.button>}
           <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={() => setShowTemplates(true)}
             title={t('planning.templatesTitleShort')}
             style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.82rem' }}><ClipboardList size={15} strokeWidth={2} /></motion.button>
-          {isCalendarWorkerAvailable() && (
+          {isCalendarWorkerAvailable() && calendarOpen && (
           <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }} onClick={() => setShowCalendars(true)}
             title={t('planning.calendarsButton')} aria-label={t('planning.calendarsButton')}
             style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.82rem' }}><CalendarPlus size={15} strokeWidth={2} /></motion.button>

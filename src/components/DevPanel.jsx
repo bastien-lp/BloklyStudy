@@ -11,7 +11,8 @@
  *   - Users   : inspect and adjust a player's XP / level / streak
  *   - Groups  : inspect groups, and delete one with its messages
  *   - Themes  : unlock every theme for the current session (local only)
- *   - Config  : the announcement banner and the maintenance switch
+ *   - Config  : the announcement banner, the maintenance switch, and which
+ *               features of the app are open
  *
  * Two deliberate choices:
  *   - Text stays in French and is NOT routed through i18n. This console is
@@ -33,7 +34,7 @@ import {
 } from 'firebase/firestore';
 import {
   BarChart3, Users as UsersIcon, MessageSquare, Palette, Settings, Radio,
-  RefreshCw, Search, Copy, Trash2, Save, X, AlertTriangle, Megaphone, Wrench,
+  RefreshCw, Search, Copy, Trash2, Save, X, AlertTriangle, Megaphone, Wrench, ToggleRight,
 } from 'lucide-react';
 import { db } from '../firebase/config';
 import { THEMES, FONTS } from '../themes/themes';
@@ -41,6 +42,7 @@ import { BADGES } from '../data/badges';
 import { levelFromXp } from '../data/levels';
 import { reportSaveError } from '../lib/notify';
 import { useTranslation } from '../i18n';
+import { FEATURES, readFeatures, isEnabled } from '../lib/features';
 import { DEV, fmt, inputStyle } from '../lib/devConsole';
 import { StatCard, Chip, Spinner, Empty, ToolButton } from './devUI';
 import DevLive from './DevLive';
@@ -183,6 +185,7 @@ async function fetchConfig() {
   return {
     systemMessage: typeof d.systemMessage === 'string' ? d.systemMessage : '',
     maintenance: d.maintenance === true,
+    features: readFeatures(d),
   };
 }
 
@@ -699,6 +702,25 @@ function TabThemes({ onUnlockAll, allUnlocked }) {
   );
 }
 
+/** What each flag is called in the console (administrators only — see header). */
+const FEATURE_LABELS = {
+  planning: 'Planning', todo: 'To-do', progress: 'Progression', confidence: 'Confiance',
+  syntheses: 'Synthèses', flashcards: 'Flashcards', repetition: 'Révisions', exams: 'Examens',
+  stats: 'Stats', reserve: 'Home (jardin et maison)', groups: 'Groupes', journal: 'Journal',
+  whoarewe: 'À propos',
+  autoPlan: 'Plan de révision automatique',
+  calendarImport: 'Import de calendrier',
+  documents: 'Documents partagés',
+  library: 'Bibliothèque de synthèses',
+  pdfFlashcards: 'Flashcards depuis un PDF',
+  quiz: 'Quiz de groupe en direct',
+  groupSessions: 'Sessions de focus partagées',
+  groupGrove: 'Bambouseraie de groupe',
+  dailyQuests: 'Quêtes du jour',
+  notifications: 'Notifications push',
+  publicDecks: 'Decks de flashcards publics',
+};
+
 // ── Tab: Config ─────────────────────────────────────────────────────────────
 
 /**
@@ -714,9 +736,19 @@ function TabConfig() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const current = draft || data || { systemMessage: '', maintenance: false };
+  const current = draft || data || { systemMessage: '', maintenance: false, features: {} };
   const msg = current.systemMessage;
   const maintenance = current.maintenance;
+  const features = current.features || {};
+  /** Opens or closes one feature in the draft. */
+  const setFeature = (id, open) => setDraft({
+    ...current,
+    // Only what is CLOSED is stored: an open feature leaves no trace, so the
+    // default stays "everything works" even if this document is lost.
+    features: open
+      ? Object.fromEntries(Object.entries(features).filter(([key]) => key !== id))
+      : { ...features, [id]: false },
+  });
   const setMsg = v => setDraft({ ...current, systemMessage: v });
   const setMaintenance = fn =>
     setDraft({ ...current, maintenance: typeof fn === 'function' ? fn(maintenance) : fn });
@@ -725,12 +757,14 @@ function TabConfig() {
     setSaving(true);
     try {
       await setDoc(doc(db, 'config', 'app'),
-        { systemMessage: msg, maintenance }, { merge: true });
+        { systemMessage: msg, maintenance, features }, { merge: true });
       setSaved(true);
       setTimeout(() => setSaved(false), 2200);
     } catch (e) { reportSaveError(e, 'DevPanel — save config'); }
     setSaving(false);
   }
+
+  const closedCount = FEATURES.filter(f => !isEnabled(features, f.id)).length;
 
   if (loading) return <Spinner />;
 
@@ -793,6 +827,52 @@ function TabConfig() {
             Pense à écrire un message système pour leur dire quand revenir.
           </div>
         )}
+      </div>
+
+      {/* Which parts of the app are open */}
+      <div style={card}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <ToggleRight size={15} strokeWidth={2.2} style={{ color: 'var(--accent)' }} />
+          <span style={{ fontSize: '.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            Fonctionnalités
+          </span>
+          {closedCount > 0 && <Chip color="var(--danger)">{closedCount} fermée{closedCount > 1 ? 's' : ''}</Chip>}
+        </div>
+        <div style={{ fontSize: '.7rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          Une fonctionnalité fermée disparaît pour tes utilisateurs : l'onglet quitte la barre,
+          l'outil n'apparaît plus. Rien n'est supprimé — les données restent en place et
+          reviennent telles quelles à la réouverture. Toi, tu continues de la voir, en grisé.
+        </div>
+
+        {['pages', 'tools'].map(group => (
+          <div key={group} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ fontSize: '.66rem', fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '.06em' }}>
+              {group === 'pages' ? 'ONGLETS' : 'OUTILS'}
+            </div>
+            {FEATURES.filter(f => f.group === group).map(f => {
+              const open = isEnabled(features, f.id);
+              return (
+                <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: '.76rem',
+                    color: open ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                    {FEATURE_LABELS[f.id] || f.id}
+                  </span>
+                  <span style={{ fontSize: '.64rem', color: open ? 'var(--text-muted)' : 'var(--danger)', whiteSpace: 'nowrap' }}>
+                    {open ? 'ouverte' : 'fermée'}
+                  </span>
+                  <motion.button whileTap={{ scale: .9 }} onClick={() => setFeature(f.id, !open)}
+                    aria-pressed={open} aria-label={FEATURE_LABELS[f.id] || f.id}
+                    style={{ width: 40, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer',
+                      position: 'relative', flexShrink: 0,
+                      background: open ? '#27AE60' : 'var(--bg-input)', transition: 'background .2s' }}>
+                    <motion.div animate={{ x: open ? 20 : 2 }}
+                      style={{ position: 'absolute', top: 2, width: 18, height: 18, borderRadius: '50%', background: '#fff' }} />
+                  </motion.button>
+                </div>
+              );
+            })}
+          </div>
+        ))}
       </div>
 
       <ToolButton icon={Save} onClick={save} disabled={saving}

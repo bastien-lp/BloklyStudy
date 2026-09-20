@@ -23,6 +23,7 @@ import { useTranslation } from '../../i18n';
 import { getDocObjectUrl, formatBytes } from '../../lib/docs';
 import { isAiFlashcardsAvailable } from '../../lib/aiFlashcards';
 import PdfFlashcardsModal from './PdfFlashcardsModal';
+import { useFeature } from '../../lib/appConfig';
 import { Button } from '../ui';
 import DocCover from './DocCover';
 import { visualFor, byteUnits } from './docVisuals';
@@ -43,6 +44,7 @@ export default function DocViewer({ user, docs, index, onIndexChange, onClose, a
   const [zoomed, setZoomed] = useState(false);
   const [pdfFailed, setPdfFailed] = useState(null); // id of a PDF PDF.js could not read
   const [cardsFor, setCardsFor] = useState(null);   // id of the PDF being turned into flashcards
+  const pdfCardsOpen = useFeature('pdfFlashcards');
   const [notesOpen, setNotesOpen] = useState(false);
   const [jump, setJump] = useState(() => (initialPage ? { page: initialPage, nonce: 1 } : null));
   const [subjects, setSubjects] = useState(null);   // my subjects, loaded when the notes panel first opens
@@ -200,7 +202,7 @@ export default function DocViewer({ user, docs, index, onIndexChange, onClose, a
             <StickyNote size={15} aria-hidden="true" /><span>{ann.list.length}</span>
           </button>
         )}
-        {doc.kind === 'pdf' && loaded && !state.error && isAiFlashcardsAvailable() && (
+        {doc.kind === 'pdf' && loaded && !state.error && isAiFlashcardsAvailable() && pdfCardsOpen && (
           <button style={{ ...iconBtn, width: 'auto', padding: '0 12px', gap: 6, borderRadius: 99, fontSize: '.74rem', fontWeight: 700 }}
             onClick={() => setCardsFor(doc.id)} aria-label={t('pdfCards.open')} title={t('pdfCards.open')}>
             <Sparkles size={15} aria-hidden="true" /><span className="hide-mobile">{t('pdfCards.short')}</span>
