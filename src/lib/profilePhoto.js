@@ -32,13 +32,37 @@ export const MAX_PHOTO_INPUT_BYTES = 15 * 1024 * 1024;
 const MAX_STORED_CHARS = 80_000;
 
 /**
- * The photo to show for the signed-in user, from their `main` document.
- * Firestore wins; Auth's photoURL (e.g. a Google account picture) is only used
- * when the field was never set. A stored `null` means "removed" and stays so.
+ * The photo to show for the signed-in user.
+ * A photo they uploaded wins; otherwise the account picture from Auth (a
+ * Google avatar, typically) is used. Removing an uploaded photo therefore
+ * falls back to the Google one rather than to initials — which is what someone
+ * signed in with Google expects to see.
  */
 export function resolveOwnPhoto(mainData, user) {
-  if (mainData && 'photoURL' in mainData) return mainData.photoURL || null;
-  return user?.photoURL || null;
+  return mainData?.photoURL || user?.photoURL || null;
+}
+
+/**
+ * Copies the Google account picture into the account the first time it is
+ * seen, so OTHER people get it too: the profile card, the groups and the
+ * friends list all read the stored field, never Auth.
+ *
+ * Does nothing when a photo is already stored, and never throws — it runs on
+ * sign-in, where a failure must stay invisible.
+ *
+ * @returns the photo now stored, or null when there was nothing to copy
+ */
+export async function adoptAccountPhoto(uid, mainData, user) {
+  const stored = mainData?.photoURL;
+  const fromAuth = user?.photoURL;
+  if (!uid || stored || !fromAuth) return null;
+  if (String(fromAuth).length > MAX_STORED_CHARS) return null;   // a URL, never a data blob
+  try {
+    await saveProfilePhoto(uid, fromAuth);
+    return fromAuth;
+  } catch {
+    return null;                                                  // offline, rules, whatever
+  }
 }
 
 /** Error with a `code`: 'not_image' | 'too_large' | 'unreadable'. */

@@ -30,7 +30,7 @@ import { isDue } from '../data/repetition';
 import { GroupSessionEngine } from '../components/GroupSessionEngine';
 import { ChronoStack } from '../components/ChronoStack';
 import { reportSaveError } from '../lib/notify';
-import { resolveOwnPhoto } from '../lib/profilePhoto';
+import { resolveOwnPhoto, adoptAccountPhoto } from '../lib/profilePhoto';
 import { startPresence, clearPresence } from '../lib/presence';
 import { isAdmin, ADMIN_UIDS } from '../lib/admin';
 import { auditBadges } from '../lib/badgeAudit';
@@ -216,6 +216,7 @@ function SubjectModal({ onAdd, onDelete, onEdit, subjects, onClose }) {
   const [name, setName]     = useState('');
   const [color, setColor]   = useState('#4A90D9');
   const [date, setDate]     = useState('');
+  const [teacher, setTeacher] = useState('');
   const [chaps, setChaps]   = useState(6);
   const [chapNames, setChapNames] = useState(() => Array.from({ length: 6 }, (_, i) => t('app.chapterDefault', { count: i + 1 })));
   const [saving, setSaving] = useState(false);
@@ -223,6 +224,7 @@ function SubjectModal({ onAdd, onDelete, onEdit, subjects, onClose }) {
   const [editName, setEditName]   = useState('');
   const [editColor, setEditColor] = useState('');
   const [editDate, setEditDate]   = useState('');
+  const [editTeacher, setEditTeacher] = useState('');
   const [confirmDel, setConfirmDel] = useState(null);
 
   const inp = { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border-strong)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: '.83rem', fontFamily: 'var(--font-family)', boxSizing: 'border-box' };
@@ -230,9 +232,9 @@ function SubjectModal({ onAdd, onDelete, onEdit, subjects, onClose }) {
   async function handleAdd() {
     if (!name.trim()) return;
     setSaving(true);
-    await onAdd(name, color, date, chaps, chapNames);
+    await onAdd(name, color, date, chaps, chapNames, teacher);
     setSaving(false);
-    setName(''); setDate(''); setChaps(6); setColor('#4A90D9');
+    setName(''); setDate(''); setChaps(6); setColor('#4A90D9'); setTeacher('');
     onClose();
   }
 
@@ -241,12 +243,13 @@ function SubjectModal({ onAdd, onDelete, onEdit, subjects, onClose }) {
     setEditName(s.name);
     setEditColor(s.color);
     setEditDate(s.date || '');
+    setEditTeacher(s.teacher || '');
   }
 
   async function handleEdit() {
     if (!editName.trim()) return;
     setSaving(true);
-    await onEdit(editId, { name: editName.trim(), color: editColor, date: editDate });
+    await onEdit(editId, { name: editName.trim(), color: editColor, date: editDate, teacher: editTeacher.trim() });
     setSaving(false);
     setEditId(null);
   }
@@ -316,6 +319,13 @@ function SubjectModal({ onAdd, onDelete, onEdit, subjects, onClose }) {
               </div>
             </div>
             <div>
+              <label style={{ fontSize: '.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+                {t('app.teacher')} <span style={{ color: 'rgba(255,255,255,.2)' }}>{t('app.optional')}</span>
+              </label>
+              <input value={teacher} onChange={e => setTeacher(e.target.value)}
+                placeholder={t('app.teacherPlaceholder')} style={inp} maxLength={60} />
+            </div>
+            <div>
               <label style={{ fontSize: '.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
                 {t('app.chapterNames')} <span style={{ color: 'rgba(255,255,255,.2)' }}>{t('app.optional')}</span>
               </label>
@@ -375,6 +385,9 @@ function SubjectModal({ onAdd, onDelete, onEdit, subjects, onClose }) {
                       <span style={{ fontSize: '.6rem', color: 'rgba(255,255,255,.3)', fontFamily: 'monospace' }}>{editColor}</span>
                     </div>
                     <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} style={{ ...inp, padding: '6px 8px' }} />
+                    <input value={editTeacher} onChange={e => setEditTeacher(e.target.value)} maxLength={60}
+                      placeholder={t('app.teacherPlaceholder')} aria-label={t('app.teacher')}
+                      style={{ ...inp, padding: '6px 8px' }} />
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button onClick={() => setEditId(null)} style={{ flex: 1, padding: '6px', borderRadius: 8, border: '1px solid rgba(255,255,255,.1)', background: 'transparent', color: 'rgba(255,255,255,.4)', fontSize: '.75rem', cursor: 'pointer' }}>{t('common.cancel')}</button>
                       <button onClick={handleEdit} style={{ flex: 2, padding: '6px', borderRadius: 8, border: 'none', background: '#4A90D9', color: '#fff', fontSize: '.75rem', fontWeight: 700, cursor: 'pointer' }}>
@@ -388,7 +401,14 @@ function SubjectModal({ onAdd, onDelete, onEdit, subjects, onClose }) {
                     background: 'var(--bg-card)', border: '1px solid var(--border)',
                     borderLeft: `3px solid ${s.color}`, borderRadius: 10, overflow: 'hidden' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px' }}>
-                      <span style={{ flex: 1, fontSize: '.83rem', color: 'var(--text-primary)', fontWeight: 500 }}>{s.name}</span>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: 'block', fontSize: '.83rem', color: 'var(--text-primary)', fontWeight: 500,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                        {s.teacher && (
+                          <span style={{ display: 'block', fontSize: '.64rem', color: 'var(--text-muted)',
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.teacher}</span>
+                        )}
+                      </span>
                       {s.date && <span style={{ fontSize: '.65rem', color: 'var(--text-muted)' }}>{formatDate(s.date, { day: 'numeric', month: 'short' })}</span>}
                       <button onClick={() => startEdit(s)}
                         style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid rgba(255,255,255,.1)', background: 'transparent', color: 'rgba(255,255,255,.5)', fontSize: '.8rem', cursor: 'pointer' }}>✏️</button>
@@ -600,6 +620,9 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
         setSubjects(d.subjects || []);
         if (d.profile?.pseudo) setPseudo(d.profile.pseudo);
         setMyPhoto(resolveOwnPhoto(d, user));
+        // First sign-in with a Google account: store its picture once, so the
+        // groups, the friends list and the profile card show it as well.
+        adoptAccountPhoto(user.uid, d, user).catch(() => {});
         setShowOnline(d.profile?.privacy?.online !== false);
         setMainDoc(d);
 
@@ -629,7 +652,7 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
     prevUnread.current = unreadBadge;
   }, [unreadBadge]);
 
-  async function addSubject(name, color, date, chaps, chapNames = []) {
+  async function addSubject(name, color, date, chaps, chapNames = [], teacher = '') {
     if (!name.trim()) return;
     try {
       const snap = await getDoc(doc(db, 'users', user.uid, 'data', 'main'));
@@ -637,7 +660,7 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
       const subs = d.subjects || [];
       const nid = subs.length > 0 ? Math.max(...subs.map(s => s.id)) + 1 : 1;
       const newSubj = {
-        id: nid, name: name.trim(), color, date: date || '', chaps: chaps || 6,
+        id: nid, name: name.trim(), color, date: date || '', teacher: teacher.trim(), chaps: chaps || 6,
         chapsDone: 0, totalBlocks: 8, doneBlocks: 0,
         conf: Array(chaps || 6).fill(0),
         chapters: Array.from({ length: chaps || 6 }, (_, i) => ({ name: chapNames[i] || t('app.chapterDefault', { count: i + 1 }), status: 'todo', note: '' })),

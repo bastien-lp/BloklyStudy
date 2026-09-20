@@ -1037,6 +1037,8 @@ const fr = {
     google: 'Continuer avec Google',
   },
   app: {
+    teacher: "Professeur",
+    teacherPlaceholder: "Ex. Mme Dupont",
     tabPlanning: 'Planning',
     tabTodo: 'To-do',
     tabProgress: 'Progression',
@@ -2990,6 +2992,8 @@ const en = {
     google: 'Continue with Google',
   },
   app: {
+    teacher: "Teacher",
+    teacherPlaceholder: "e.g. Ms Dupont",
     tabPlanning: 'Planner',
     tabTodo: 'To-do',
     tabProgress: 'Progress',
@@ -4907,6 +4911,8 @@ const es = {
     google: 'Continuar con Google',
   },
   app: {
+    teacher: "Profesor/a",
+    teacherPlaceholder: "Ej. Sra. Dupont",
     tabPlanning: 'Planificador',
     tabTodo: 'Tareas',
     tabProgress: 'Progreso',
@@ -6858,6 +6864,8 @@ const de = {
     google: 'Mit Google fortfahren',
   },
   app: {
+    teacher: "Lehrkraft",
+    teacherPlaceholder: "z. B. Frau Dupont",
     tabPlanning: 'Planer',
     tabTodo: 'To-do',
     tabProgress: 'Fortschritt',
