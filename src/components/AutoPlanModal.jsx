@@ -3,8 +3,16 @@
  * --------------------------------------------------------------------------
  * The student sets the period, the days and hours available, the daily study
  * time, the session length and the subjects; the plan (lib/autoPlan.js) is
- * recomputed live and previewed day by day, with a clear warning for what
- * does not fit. Nothing is written until "Add to my planner".
+ * recomputed live and previewed day by day. Nothing is written until "Add to
+ * my planner".
+ *
+ * The plan used to be a black box: a list of blocks appeared and nothing said
+ * where they came from. Three things now make it readable:
+ *   - the RULES, in four short lines, at the top;
+ *   - what it COUNTED for these settings (chapters, weak chapters, exams) and
+ *     what it worked around (existing blocks, calendar events);
+ *   - the time AVAILABLE against the time NEEDED, as one bar, with the three
+ *     settings to change when it does not fit.
  *
  * An existing automatic plan (future, unfinished blocks marked `auto`) can be
  * replaced by the new one, or removed on its own.
@@ -14,7 +22,7 @@
 
 import { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import { Wand2, X, AlertTriangle, Trash2, CalendarPlus } from 'lucide-react';
+import { Wand2, X, AlertTriangle, Trash2, CalendarPlus, BookOpen, HeartCrack, GraduationCap, CalendarX, Info } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { generateRevisionPlan, pendingAutoBlocks } from '../lib/autoPlan';
 import { formatDuration } from '../lib/duration';
@@ -28,6 +36,29 @@ function clock(h, lang) {
   const hh = Math.floor(h);
   const mm = String(Math.round((h % 1) * 60)).padStart(2, '0');
   return lang === 'fr' ? `${hh}h${mm === '00' ? '' : mm}` : `${String(hh).padStart(2, '0')}:${mm}`;
+}
+
+/** One "here is what I found" figure. Never a control: it only reports. */
+function Fact({ icon: Icon, value, label, tone }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 12, background: 'var(--bg-card-hover)' }}>
+      <Icon size={15} aria-hidden="true" style={{ flexShrink: 0, color: tone || 'var(--accent)' }} />
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: '.82rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.1 }}>{value}</div>
+        <div style={{ fontSize: '.62rem', color: 'var(--text-muted)', lineHeight: 1.25 }}>{label}</div>
+      </div>
+    </div>
+  );
+}
+
+/** One rule of the plan, written the way a student would say it. */
+function Rule({ children }) {
+  return (
+    <li style={{ display: 'flex', gap: 7, alignItems: 'flex-start', fontSize: '.73rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+      <span aria-hidden="true" style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0, marginTop: 7 }} />
+      <span>{children}</span>
+    </li>
+  );
 }
 
 export default function AutoPlanModal({ subjects, blocks, events, onApply, onRemove, onClose }) {
@@ -47,6 +78,7 @@ export default function AutoPlanModal({ subjects, blocks, events, onApply, onRem
     subjectIds: candidates.map(s => String(s.id)),
   });
   const [replace, setReplace] = useState(true);
+  const [showRules, setShowRules] = useState(true);
   const set = (k, v) => setOpts(o => ({ ...o, [k]: v }));
 
   const plan = useMemo(() => {
@@ -68,6 +100,10 @@ export default function AutoPlanModal({ subjects, blocks, events, onApply, onRem
     }
     return [...map.entries()];
   }, [plan]);
+
+  // What the plan reports about itself, and how full the period would be.
+  const x = plan.explain;
+  const fillPct = x.capacityHours > 0 ? Math.min(100, Math.round((x.neededHours / x.capacityHours) * 100)) : 100;
 
   const dayNames = Array.from({ length: 7 }, (_, i) => formatDate(new Date(2024, 0, 1 + i), { weekday: 'short' }).replace(/\.$/, ''));
   const subjectOf = id => subjects.find(s => String(s.id) === String(id));
@@ -191,6 +227,51 @@ export default function AutoPlanModal({ subjects, blocks, events, onApply, onRem
               </label>
             )}
 
+            {/* What the plan counted, and whether it fits */}
+            <div style={{ borderRadius: 16, background: 'var(--bg-card)', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 11 }}>
+              <button type="button" onClick={() => setShowRules(r => !r)} aria-expanded={showRules}
+                style={{ display: 'flex', alignItems: 'center', gap: 7, padding: 0, border: 'none', background: 'transparent',
+                  cursor: 'pointer', fontSize: '.78rem', fontWeight: 800, color: 'var(--text-primary)', textAlign: 'left' }}>
+                <Info size={15} aria-hidden="true" style={{ color: 'var(--accent)' }} />
+                {t('autoPlan.howTitle')}
+                <span style={{ marginLeft: 'auto', fontSize: '.66rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                  {showRules ? t('autoPlan.hide') : t('autoPlan.show')}
+                </span>
+              </button>
+              {showRules && (
+                <ul style={{ display: 'flex', flexDirection: 'column', gap: 5, margin: 0, padding: 0, listStyle: 'none' }}>
+                  <Rule>{t('autoPlan.rule1')}</Rule>
+                  <Rule>{t('autoPlan.rule2')}</Rule>
+                  <Rule>{t('autoPlan.rule3')}</Rule>
+                  <Rule>{t('autoPlan.rule4')}</Rule>
+                </ul>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(128px, 1fr))', gap: 7 }}>
+                <Fact icon={BookOpen} value={x.chapters} label={t('autoPlan.factChapters', { count: x.chapters })} />
+                <Fact icon={HeartCrack} value={x.weakChapters} label={t('autoPlan.factWeak', { count: x.weakChapters })} tone="var(--warning)" />
+                <Fact icon={GraduationCap} value={x.exams.length} label={t('autoPlan.factExams', { count: x.exams.length })} />
+                <Fact icon={CalendarX} value={x.busyBlocks + x.busyEvents} label={t('autoPlan.factBusy', { count: x.busyBlocks + x.busyEvents })} tone="var(--text-muted)" />
+              </div>
+
+              {/* Time available against time needed */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, marginBottom: 5 }}>
+                  <span style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--text-muted)' }}>{t('autoPlan.timeTitle')}</span>
+                  <span style={{ fontSize: '.72rem', color: 'var(--text-secondary)' }}>
+                    {t('autoPlan.timeValue', { needed: formatDuration(x.neededHours, lang), available: formatDuration(x.capacityHours, lang) })}
+                  </span>
+                </div>
+                <div style={{ position: 'relative', height: 9, borderRadius: 9, overflow: 'hidden', background: 'var(--bg-card-hover)' }}>
+                  <div style={{ height: '100%', borderRadius: 9, width: `${fillPct}%`,
+                    background: x.enoughTime ? 'var(--success, #27AE60)' : 'var(--warning)' }} />
+                </div>
+                <div style={{ fontSize: '.66rem', color: 'var(--text-muted)', marginTop: 5, lineHeight: 1.5 }}>
+                  {t('autoPlan.timeHint', { days: x.daysAvailable, daily: formatDuration(opts.dailyHours, lang) })}
+                </div>
+              </div>
+            </div>
+
             {/* Preview */}
             <div style={{ borderRadius: 16, background: 'var(--bg-card)', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ fontSize: '.8rem', fontWeight: 800, color: 'var(--text-primary)' }}>
@@ -203,6 +284,8 @@ export default function AutoPlanModal({ subjects, blocks, events, onApply, onRem
                     {t('autoPlan.notEnoughTime', {
                       list: plan.unscheduled.map(u => t('autoPlan.missingItem', { count: u.count, name: u.name })).join(', '),
                     })}
+                    <br />
+                    {t('autoPlan.howToFix')}
                   </span>
                 </div>
               )}
@@ -231,6 +314,28 @@ export default function AutoPlanModal({ subjects, blocks, events, onApply, onRem
                   <div style={{ fontSize: '.74rem', color: 'var(--text-muted)' }}>{t('autoPlan.empty')}</div>
                 )}
               </div>
+
+              {/* Subject by subject: how much was planned out of what is needed */}
+              {x.perSubject.length > 0 && (
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 9, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {x.perSubject.map(row => (
+                    <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.72rem', color: 'var(--text-secondary)' }}>
+                      <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: row.color || 'var(--accent)' }} />
+                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)', fontWeight: 600 }}>
+                        {row.name}
+                      </span>
+                      {row.exam && (
+                        <span style={{ flexShrink: 0, fontSize: '.64rem', color: 'var(--warning)' }}>
+                          {t('autoPlan.examOn', { date: formatDate(row.exam, { day: 'numeric', month: 'short' }) })}
+                        </span>
+                      )}
+                      <span style={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums', color: row.placed < row.sessions ? 'var(--warning)' : 'var(--text-muted)' }}>
+                        {t('autoPlan.rowSessions', { placed: row.placed, total: row.sessions })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </>
         )}

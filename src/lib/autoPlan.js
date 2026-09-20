@@ -11,12 +11,19 @@
  *   2. Each chapter must fit before its subject's exam (the day before at the
  *      latest); subjects without an exam date only need to fit in the period.
  *      Earliest deadline first, weak chapters first among equals.
- *   3. A general-review session is placed the day before each exam.
+ *   3. A general-review session is placed before each exam, on the last day
+ *      available before it (the eve when that day was picked).
  *   4. Sessions go into free time only: never over an existing block or a
  *      timed calendar event, within the chosen hours, with a short break
  *      between sessions, at most `dailyHours` per day, and subjects are
  *      alternated within a day whenever there is a choice.
  *   5. What cannot fit is reported (`unscheduled`), never silently dropped.
+ *
+ * The result also carries `explain`: how many chapters were counted, how many
+ * of them are weak, how many exams fall in the period, how many existing
+ * blocks and calendar events were worked around, and how the time available
+ * compares with the time needed. The modal shows it, so the plan is never a
+ * black box.
  *
  * Block format (identical to a block added by hand in PagePlanning):
  *   { type: 'rev', subj, label: '', color, day(0=Mon), hour, dur, task, notes: '',
@@ -111,6 +118,8 @@ export function generateRevisionPlan({ subjects, blocks = [], events = [], optio
   // ── 1. Work items ──
   const items = [];
   const finals = [];
+  // Per subject, what the plan found — shown to the student, never used to decide.
+  const perSubject = [];
   for (const s of chosen) {
     const exam = parseExamDate(s.date);
     const examInPeriod = exam && exam >= today && exam < horizonEnd;
@@ -128,12 +137,38 @@ export function generateRevisionPlan({ subjects, blocks = [], events = [], optio
       if (weak) items.push({ ...base, pass: 2 });
     });
     if (o.finalReview && examInPeriod) finals.push({ subject: s, exam });
+
+    const mine = items.filter(it => String(it.subject.id) === String(s.id));
+    perSubject.push({
+      id: s.id,
+      name: s.name,
+      color: s.color || null,
+      chapters: new Set(mine.map(it => it.chapter)).size,
+      weak: new Set(mine.filter(it => it.weak).map(it => it.chapter)).size,
+      sessions: mine.length,
+      placed: 0,
+      exam: examInPeriod ? exam : null,
+      deadline,
+    });
   }
   // Earliest deadline first; weak chapters first; then chapter order.
   items.sort((a, b) => a.deadline - b.deadline || (b.weak - a.weak) || (a.conf - b.conf) || a.chapter - b.chapter || a.pass - b.pass);
 
   // ── 2. Day by day ──
+  // Where each general review goes: the eve of the exam when that day is one
+  // of the chosen ones, otherwise the closest available day before it.
+  const finalsByDay = new Map();
+  for (const f of finals) {
+    let d = addDays(f.exam, -1);
+    while (d >= today && !o.days[(d.getDay() + 6) % 7]) d = addDays(d, -1);
+    if (d < today) continue;                       // no day left: reported below
+    finalsByDay.set(d.getTime(), [...(finalsByDay.get(d.getTime()) || []), f]);
+  }
+
   const planned = [];
+  let daysAvailable = 0;
+  let busyBlocks = 0;
+  let busyEvents = 0;
   const firstPassDay = new Map(); // "subj_chapter" → day index of the first session
   const placeOn = (day, dayBusy, dur, start) => {
     const from = Math.max(o.startHour, start);
@@ -149,13 +184,16 @@ export function generateRevisionPlan({ subjects, blocks = [], events = [], optio
 
   for (let day = today, n = 0; day < horizonEnd; day = addDays(day, 1), n++) {
     if (!o.days[(day.getDay() + 6) % 7]) continue;
+    daysAvailable++;
+    busyBlocks += busyHours(day, blocks, [], thisMonday).length;
+    busyEvents += busyHours(day, [], events, thisMonday).length;
     const dayBusy = busyHours(day, [...blocks, ...planned], events, thisMonday);
     let used = 0;
     let cursor = n === 0 ? Math.max(o.startHour, Math.ceil((nowHour + 0.5) / SLOT) * SLOT) : o.startHour;
     let lastSubject = null;
 
-    // The day before an exam ends with its general review: keep time for it.
-    const finalsToday = finals.filter(f => addDays(f.exam, -1).getTime() === day.getTime());
+    // A day carrying a general review keeps the time for it.
+    const finalsToday = finalsByDay.get(day.getTime()) || [];
     const reserved = Math.min(o.dailyHours, finalsToday.length * o.sessionHours);
 
     while (used + o.sessionHours <= o.dailyHours - reserved + 1e-9) {
@@ -181,6 +219,7 @@ export function generateRevisionPlan({ subjects, blocks = [], events = [], optio
       const hour = placeOn(day, dayBusy, o.sessionHours, cursor);
       if (hour == null) break;
       planned.push(makeBlock(day, hour, f.subject, null, labels.finalReview));
+      f.placed = true;
       dayBusy.push([hour, hour + o.sessionHours]);
       used += o.sessionHours;
       cursor = hour + o.sessionHours + BREAK_H;
@@ -189,17 +228,49 @@ export function generateRevisionPlan({ subjects, blocks = [], events = [], optio
 
   // ── 3. What did not fit ──
   const missing = new Map();
-  for (const it of items) {
-    if (it.placed) continue;
-    const key = String(it.subject.id);
-    const m = missing.get(key) || { subjectId: it.subject.id, name: it.subject.name, count: 0 };
+  const addMissing = subject => {
+    const key = String(subject.id);
+    const m = missing.get(key) || { subjectId: subject.id, name: subject.name, count: 0 };
     m.count++;
     missing.set(key, m);
+  };
+  for (const it of items) if (!it.placed) addMissing(it.subject);
+  for (const f of finals) if (!f.placed) addMissing(f.subject);
+  for (const b of planned) {
+    const row = perSubject.find(p => String(p.id) === String(b.subj));
+    if (row) row.placed++;
   }
+
+  const finalsPlanned = planned.filter(b => !b.chapters.length).length;
+  const sessionsNeeded = items.length + finals.length;
+  const neededHours = sessionsNeeded * o.sessionHours;
+  const capacityHours = daysAvailable * o.dailyHours;
+
   return {
     blocks: planned,
     unscheduled: [...missing.values()],
     hours: planned.reduce((h, b) => h + b.dur, 0),
+    explain: {
+      // what was counted
+      chapters: items.filter(it => it.pass === 1).length,
+      weakChapters: items.filter(it => it.pass === 2).length,
+      sessionsNeeded,
+      sessionsPlaced: planned.length,
+      finalReviews: finals.length,
+      finalReviewsPlaced: finalsPlanned,
+      // A real Date:  is the planner's own key (the ISO form of
+      // LOCAL midnight, one day earlier east of UTC) and must never be shown.
+      exams: finals.map(f => ({ id: f.subject.id, name: f.subject.name, date: f.exam })),
+      // what it worked around
+      busyBlocks,
+      busyEvents,
+      // whether it can fit
+      daysAvailable,
+      capacityHours,
+      neededHours,
+      enoughTime: neededHours <= capacityHours,
+      perSubject,
+    },
   };
 }
 
