@@ -1026,7 +1026,7 @@ export function ScreenStats({ t, formatNumber }) {
             ))}
             <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--bg-card-hover)',
               border: '2px solid var(--bg-base)', marginLeft: -8, display: 'flex', alignItems: 'center',
-              justifyContent: 'center', fontSize: '.58rem', color: 'var(--text-muted)' }}>+19</div>
+              justifyContent: 'center', fontSize: '.9rem', fontWeight: 800, color: 'var(--text-muted)' }}>…</div>
           </div>
         </Card>
       </div>

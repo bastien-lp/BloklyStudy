@@ -306,7 +306,7 @@ export default function DevLive() {
           {recent.length === 0 && <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', padding: '6px 2px' }}>Aucun compte.</div>}
           {recent.map(a => (
             <AccountRow key={a.id} uid={a.id} pseudo={a.pseudo} active={selected?.uid === a.id}
-              caption={a.updatedAt ? `${sinceLabel(new Date(dayOf(a.updatedAt)).getTime(), now)} · ${fmt(a.xp)} XP` : `${fmt(a.xp)} XP`}
+              caption={a.updatedAt ? `${sinceLabel(Date.parse(a.updatedAt), now)} · ${fmt(a.xp)} XP` : `${fmt(a.xp)} XP · jamais vu`}
               onClick={() => openAccount(a.id)} />
           ))}
         </div>
