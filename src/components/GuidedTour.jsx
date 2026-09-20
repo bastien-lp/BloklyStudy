@@ -316,7 +316,7 @@ export const TOUR_STEPS = {
       mascot: asset('soso/id%C3%A9e2.png'),
     },
     {
-      target: 'tour-home-diversity',
+      target: 'tour-home-slots',
       titleKey: 'tour.home.s3.title',
       textKey: 'tour.home.s3.text',
       position: 'bottom',

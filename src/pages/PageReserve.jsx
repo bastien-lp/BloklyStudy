@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Sprout, Store, Home, Leaf, Scissors, Check, TrendingUp,
+  Sprout, Store, Home, Check, TrendingUp,
   ChevronLeft, ChevronRight, Lock, Unlock, RotateCw, Plus, Minus,
   ArrowUp, ArrowDown, Trash2, X,
 } from 'lucide-react';
@@ -11,15 +11,10 @@ import { useTranslation } from '../i18n';
 import { GuidedTour, useGuidedTour, TourButton } from '../components/GuidedTour';
 import { reportSaveError } from '../lib/notify';
 import { asset } from '../lib/assets';
-
-const BASE_GROWTH = 5;
-const GROWTH_PER_LEVEL = 15;
-const BASE_COINS = 10;
-const COINS_PER_LEVEL = 5;
-const BAMBOOS_PER_LEVEL = 3;
-
-const growthTarget = lvl => BASE_GROWTH + (lvl - 1) * GROWTH_PER_LEVEL;
-const coinValue    = lvl => BASE_COINS + (lvl - 1) * COINS_PER_LEVEL;
+import { SCENE } from '../lib/gardenPalette';
+import { CoinIcon } from '../components/GardenScene';
+import GardenTab from '../components/GardenTab';
+import { readGarden, writeGarden, afterCut, cutValue, nextSlotPrice, MAX_SLOTS } from '../lib/bambooGarden';
 
 const ROOMS = [
   { id: 'piece',        image: asset('reserve/rooms/piece.jpg'),        unlockXp: 0,    unlockCoins: 0   },
@@ -105,201 +100,14 @@ function ItemVisual({ item, size }) {
 // La profondeur (qui passe devant) est déterminée par y : plus bas = devant.
 
 
-function weekKey(d = new Date()) {
-  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const day = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-  const week = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
-  return `${date.getUTCFullYear()}-W${week}`;
-}
 
-function diversityBonus(count) {
-  if (count >= 5) return 0.5;
-  if (count >= 3) return 0.2;
-  return 0;
-}
-
-/* ── Palette de la scène ──────────────────────────────────────────────────
-   Le jardin et la boutique sont des décors illustrés : leurs couleurs sont
-   fixes (matin brumeux, bois, verdure) et ne suivent pas le thème de l'app,
-   exactement comme une illustration. Seule la couleur de la matière varie. */
-const SCENE = {
-  skyTop:    '#E8F1DF',
-  skyMid:    '#F6EFE2',
-  skyLow:    '#EFE2CB',
-  soil:      '#A87C4F',
-  soilDark:  '#7E5833',
-  bark:      '#6B4A2F',
-  barkLight: '#8C6440',
-  cream:     '#FBF4E7',
-  ink:       '#3B3226',
-  inkSoft:   '#83705A',
-  leaf:      '#4F7A38',
-  leafDeep:  '#2F5223',
-  amber:     '#E0A03C',
-};
-
-/** Pièce de bambou — la monnaie du jardin. */
-function CoinIcon({ size = 16 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"
-      style={{ display: 'block', flexShrink: 0 }}>
-      <circle cx="12" cy="12" r="10" fill="#E9B44C" />
-      <circle cx="12" cy="12" r="10" fill="none" stroke="#B07E28" strokeWidth="1.4" />
-      <ellipse cx="9.5" cy="8" rx="4.5" ry="3" fill="#fff" opacity=".28" />
-      <path d="M12 6.4v11.2" stroke="#8A5E18" strokeWidth="1.6" strokeLinecap="round" opacity=".75" />
-      <path d="M9.4 9.2h5.2M9.4 14.8h5.2" stroke="#8A5E18" strokeWidth="1.3" strokeLinecap="round" opacity=".5" />
-    </svg>
-  );
-}
-
-/** Décor du jardin : halo de soleil et silhouettes de bambous lointains. */
-function GardenBackdrop() {
-  const distant = [6, 14, 23, 38, 52, 61, 74, 83, 92];
-  return (
-    <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"
-      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
-      <defs>
-        <radialGradient id="rsvSun" cx="82%" cy="6%" r="55%">
-          <stop offset="0%" stopColor="#FFE9B0" stopOpacity=".85" />
-          <stop offset="100%" stopColor="#FFE9B0" stopOpacity="0" />
-        </radialGradient>
-        <linearGradient id="rsvHaze" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#9FBE86" stopOpacity=".38" />
-          <stop offset="100%" stopColor="#9FBE86" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <rect width="100" height="100" fill="url(#rsvSun)" />
-      {/* bambous lointains : de simples traits verticaux fondus dans la brume */}
-      {distant.map((x, i) => (
-        <rect key={x} x={x} y={i % 2 ? 2 : 8} width={i % 3 ? 0.7 : 1.1} height={i % 2 ? 62 : 54}
-          fill="url(#rsvHaze)" rx="0.4" />
-      ))}
-    </svg>
-  );
-}
-
-const STALK_SEGMENTS = 6;
-const SEGMENT_H = 19;      // hauteur d'un entre-nœud, en unités du viewBox
-const SOIL_Y = 152;        // ligne de terre dans le viewBox
-
-/** Une tige : entre-nœuds empilés, qui s'affine et s'incline vers le haut. */
-function BambooStalk({ baseX, lean, depth, delay, grown, mature }) {
-  // depth 0 = premier plan net, 1 = arrière-plan fondu dans la brume
-  const scale = 1 - depth * 0.22;
-  const tint = depth === 0 ? SCENE.leaf : '#7E9B6B';
-  const edge = depth === 0 ? SCENE.leafDeep : '#5C7A4C';
-  const nodes = Math.max(0, grown - depth);
-  return (
-    <motion.g
-      animate={{ rotate: mature ? [0, 1.1, 0, -1.1, 0] : [0, 0.5, 0, -0.5, 0] }}
-      transition={{ duration: 5.5 + delay, repeat: Infinity, ease: 'easeInOut', delay }}
-      style={{ originX: `${baseX}px`, originY: `${SOIL_Y}px` }}
-      opacity={depth === 0 ? 1 : 0.55}>
-      {Array.from({ length: STALK_SEGMENTS }).map((_, i) => {
-        const isGrown = i < nodes;
-        const h = SEGMENT_H * scale;
-        const yBottom = SOIL_Y - i * h;
-        const yTop = yBottom - h + 2.5;              // le creux laissé = le nœud
-        const xBottom = baseX + lean * i * 1.1;
-        const xTop = baseX + lean * (i + 1) * 1.1;
-        const wB = (5.4 - i * 0.42) * scale;
-        const wT = (5.4 - (i + 1) * 0.42) * scale;
-        const leafDir = i % 2 ? 1 : -1;
-        return (
-          <g key={i} style={{ opacity: isGrown ? 1 : 0.08, transition: 'opacity .5s ease' }}>
-            <path
-              d={`M${xBottom - wB} ${yBottom} L${xTop - wT} ${yTop} L${xTop + wT} ${yTop} L${xBottom + wB} ${yBottom} Z`}
-              fill={tint} />
-            {/* lumière rasante sur le flanc gauche de la tige */}
-            <path
-              d={`M${xBottom - wB} ${yBottom} L${xTop - wT} ${yTop} L${xTop - wT * 0.35} ${yTop} L${xBottom - wB * 0.35} ${yBottom} Z`}
-              fill="#fff" opacity=".22" />
-            <line x1={xTop - wT - 0.6} y1={yTop} x2={xTop + wT + 0.6} y2={yTop}
-              stroke={edge} strokeWidth={1.3 * scale} strokeLinecap="round" />
-            {/* feuilles, à partir du 2e entre-nœud */}
-            {isGrown && i >= 1 && (
-              <g fill={tint}>
-                <path d={`M${xTop + wT * leafDir} ${yTop + 5}
-                          Q${xTop + 17 * leafDir * scale} ${yTop - 4}
-                           ${xTop + 12 * leafDir * scale} ${yTop + 8}
-                          Q${xTop + 7 * leafDir * scale} ${yTop + 8} ${xTop + wT * leafDir} ${yTop + 5} Z`} />
-                <path d={`M${xTop - wT * leafDir} ${yTop + 9}
-                          Q${xTop - 13 * leafDir * scale} ${yTop + 2}
-                           ${xTop - 9 * leafDir * scale} ${yTop + 13}
-                          Q${xTop - 5 * leafDir * scale} ${yTop + 12} ${xTop - wT * leafDir} ${yTop + 9} Z`}
-                  opacity=".82" />
-              </g>
-            )}
-          </g>
-        );
-      })}
-  </motion.g>
-);
-}
-
-/**
- * Un bouquet de bambous poussant à même la terre.
- * `pct` (0 → 1) pilote le nombre d'entre-nœuds sortis ; à 1 la plante est mûre
- * et reçoit un halo chaud. `accent` est la couleur de la matière.
- */
-function BambooPlant({ pct, accent }) {
-  const mature = pct >= 1;
-  const grown = Math.max(1, Math.round(pct * STALK_SEGMENTS));
-
-  return (
-    <div style={{ position: 'relative', width: '100%', maxWidth: 132 }}>
-      {/* halo de maturité : la plante est prête à être coupée */}
-      <AnimatePresence>
-        {mature && (
-          <motion.div key="glow" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            style={{ position: 'absolute', inset: '-8% -16% 6%', borderRadius: '50%', pointerEvents: 'none',
-              background: `radial-gradient(circle at 50% 55%, ${accent}2e 0%, rgba(255,220,140,.3) 38%, transparent 70%)` }} />
-        )}
-      </AnimatePresence>
-
-      <svg viewBox="0 0 120 172" style={{ width: '100%', display: 'block', overflow: 'visible' }}>
-        {/* lit de terre : une tache douce, surtout pas un cadre */}
-        <ellipse cx="60" cy={SOIL_Y + 6} rx="46" ry="11" fill={SCENE.soil} opacity=".22" />
-        {/* ombre portée du bouquet */}
-        <ellipse cx="60" cy={SOIL_Y + 3} rx="27" ry="6" fill={SCENE.soilDark} opacity=".28" />
-
-        {/* tiges : 2 en arrière-plan fondues, 3 au premier plan */}
-        <BambooStalk baseX={48} lean={-1.5} depth={1} delay={1.1} grown={grown} mature={mature} />
-        <BambooStalk baseX={73} lean={1.6} depth={1} delay={1.7} grown={grown} mature={mature} />
-        <BambooStalk baseX={54} lean={-0.9} depth={0} delay={0} grown={grown} mature={mature} />
-        <BambooStalk baseX={60} lean={0.25} depth={0} delay={0.6} grown={grown} mature={mature} />
-        <BambooStalk baseX={67} lean={1.1} depth={0} delay={1.3} grown={grown} mature={mature} />
-
-        {/* motte de terre et touffes d'herbe, par-dessus le pied des tiges */}
-        <path d={`M28 ${SOIL_Y} Q60 ${SOIL_Y - 9} 92 ${SOIL_Y} Q60 ${SOIL_Y + 12} 28 ${SOIL_Y} Z`} fill={SCENE.soil} />
-        <path d={`M28 ${SOIL_Y} Q60 ${SOIL_Y - 9} 92 ${SOIL_Y} Q60 ${SOIL_Y - 3} 28 ${SOIL_Y} Z`} fill={SCENE.soilDark} opacity=".45" />
-        <g stroke={SCENE.leafDeep} strokeWidth="1.6" strokeLinecap="round" fill="none" opacity=".7">
-          <path d={`M36 ${SOIL_Y} q-4 -6 -1 -10`} />
-          <path d={`M41 ${SOIL_Y + 1} q3 -7 8 -9`} />
-          <path d={`M80 ${SOIL_Y} q5 -6 2 -11`} />
-          <path d={`M85 ${SOIL_Y + 1} q-3 -6 -8 -8`} />
-        </g>
-
-        {/* particules de lumière quand la plante est mûre */}
-        {mature && [0, 1, 2].map(i => (
-          <motion.circle key={i} cx={44 + i * 16} r={1.8} fill="#FFD98A"
-            initial={{ cy: SOIL_Y - 20, opacity: 0 }}
-            animate={{ cy: [SOIL_Y - 20, 34], opacity: [0, 0.9, 0] }}
-            transition={{ duration: 3.4, repeat: Infinity, delay: i * 1.1, ease: 'easeOut' }} />
-        ))}
-      </svg>
-    </div>
-  );
-}
 export default function PageReserve({ user }) {
   const { t } = useTranslation();
   const tour = useGuidedTour('home');
   const [subjects, setSubjects] = useState([]);
   const [reserve, setReserve] = useState({
     studyTime: {}, harvested: {}, coins: 0,
-    potLevels: {}, potProgress: {}, diversity: { week: '', subjects: [] },
+    bamboo: { v: 2, pool: 0, slots: 1, by: {} },
     purchasedCounts: {}, placedItems: [],
     // These two were missing: they only appeared once data/reserve existed, so
     // an account that had never written it read `rooms[id]` off undefined and
@@ -313,6 +121,9 @@ export default function PageReserve({ user }) {
   const [userXp, setUserXp] = useState(0); // objet sélectionné (double-tap)
   const roomRef = useRef(null);
   const lastTapRef = useRef({ uid: null, time: 0 });
+  // The old garden is converted once; without this a second snapshot
+  // arriving before the write lands would convert it all over again.
+  const migratedRef = useRef(false);
 
   // Détecte un double-tap manuellement (Motion intercepte onDoubleClick)
   function handleTap(uid) {
@@ -346,7 +157,6 @@ export default function PageReserve({ user }) {
     };
   }, [tab]);
   const [loading, setLoading] = useState(true);
-  const [harvestFx, setHarvestFx] = useState(null);
   const [shopCat, setShopCat] = useState('Tout');
   const [buyFx, setBuyFx] = useState(null);
   const [shopMsg, setShopMsg] = useState(null); // bulle de dialogue de la marchande
@@ -368,26 +178,30 @@ export default function PageReserve({ user }) {
     const unsub = onSnapshot(doc(db, 'users', user.uid, 'data', 'reserve'), snap => {
       if (snap.exists()) {
         const d = snap.data();
+        // The grove is read through the migration helper: an account that
+        // still carries the old per-subject pots gets its standing minutes
+        // planted in the new one, once, without losing anything.
+        const garden = readGarden(d);
         setReserve({
           studyTime: d.studyTime || {},
           harvested: d.harvested || {},
           coins: d.coins || 0,
-          potLevels: d.potLevels || {},
-          potProgress: d.potProgress || {},
-          diversity: d.diversity || { week: '', subjects: [] },
+          bamboo: writeGarden(garden),
           purchasedCounts: d.purchasedCounts || {},
           rooms: d.rooms || {},
           unlockedRooms: d.unlockedRooms || ['piece'],
         });
+        if (garden.migrated && !migratedRef.current) {
+          migratedRef.current = true;
+          setDoc(doc(db, 'users', user.uid, 'data', 'reserve'),
+            { bamboo: writeGarden(garden) }, { merge: true }).catch(e => reportSaveError(e));
+        }
       }
       setLoading(false);
     });
     return unsub;
   }, [user]);
 
-  const currentWeek = weekKey();
-  const divSubjects = reserve.diversity.week === currentWeek ? reserve.diversity.subjects : [];
-  const bonus = diversityBonus(divSubjects.length);
 
   // Inventaire disponible = acheté - placé
   function availableCount(itemId) {
@@ -399,41 +213,33 @@ export default function PageReserve({ user }) {
     return owned - placedTotal;
   }
 
-  async function harvest(subjId) {
-    const lvl = reserve.potLevels[subjId] || 1;
-    const target = growthTarget(lvl);
-    const total = reserve.studyTime[subjId] || 0;
-    const harvested = reserve.harvested[subjId] || 0;
-    const available = Math.max(0, total - harvested);
-    const matureCount = Math.floor(available / target);
-    if (matureCount < 1) return;
+  /** Cuts the whole grove: coins for the time banked, bonus for ripe bamboos. */
+  async function cutGarden() {
+    const garden = reserve.bamboo;
+    if (!garden || garden.pool <= 0) return;
+    const gain = cutValue(garden.pool, garden.slots).coins;
+    const next = writeGarden(afterCut(garden));
+    const newCoins = (reserve.coins || 0) + gain;
 
-    const baseGain = matureCount * coinValue(lvl);
-    const gained = Math.round(baseGain * (1 + bonus));
-
-    let newLevel = lvl;
-    let newProgress = (reserve.potProgress[subjId] || 0) + matureCount;
-    while (newProgress >= BAMBOOS_PER_LEVEL) { newProgress -= BAMBOOS_PER_LEVEL; newLevel += 1; }
-
-    let divList = reserve.diversity.week === currentWeek ? [...reserve.diversity.subjects] : [];
-    if (!divList.includes(String(subjId))) divList.push(String(subjId));
-
-    const newHarvested = { ...reserve.harvested, [subjId]: harvested + matureCount * target };
-    const newCoins = (reserve.coins || 0) + gained;
-    const newPotLevels = { ...reserve.potLevels, [subjId]: newLevel };
-    const newPotProgress = { ...reserve.potProgress, [subjId]: newProgress };
-    const newDiversity = { week: currentWeek, subjects: divList };
-
-    setReserve(r => ({ ...r, harvested: newHarvested, coins: newCoins,
-      potLevels: newPotLevels, potProgress: newPotProgress, diversity: newDiversity }));
-    setHarvestFx({ subjId, coins: gained, levelUp: newLevel > lvl });
-    setTimeout(() => setHarvestFx(null), 1600);
-
+    setReserve(r => ({ ...r, coins: newCoins, bamboo: next }));
     try {
-      await setDoc(doc(db, 'users', user.uid, 'data', 'reserve'), {
-        harvested: newHarvested, coins: newCoins,
-        potLevels: newPotLevels, potProgress: newPotProgress, diversity: newDiversity,
-      }, { merge: true });
+      await setDoc(doc(db, 'users', user.uid, 'data', 'reserve'),
+        { coins: newCoins, bamboo: next }, { merge: true });
+    } catch (e) { reportSaveError(e); }
+  }
+
+  /** Buys the next bamboo, so more time can be banked before cutting. */
+  async function buyPlot() {
+    const garden = reserve.bamboo;
+    const price = nextSlotPrice(garden.slots);
+    if (price == null || garden.slots >= MAX_SLOTS || (reserve.coins || 0) < price) return;
+    const next = writeGarden({ ...garden, slots: garden.slots + 1 });
+    const newCoins = reserve.coins - price;
+
+    setReserve(r => ({ ...r, coins: newCoins, bamboo: next }));
+    try {
+      await setDoc(doc(db, 'users', user.uid, 'data', 'reserve'),
+        { coins: newCoins, bamboo: next }, { merge: true });
     } catch (e) { reportSaveError(e); }
   }
 
@@ -600,147 +406,8 @@ export default function PageReserve({ user }) {
 
         {/* ── JARDIN ── */}
         {tab === 'garden' && (
-          <motion.div key="garden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-
-            {/* Bandeau diversité — une ligne, pas une carte */}
-            <div data-tour="tour-home-diversity" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 14,
-              background: bonus > 0 ? 'rgba(79,122,56,.14)' : 'var(--bg-card)',
-              border: `1px solid ${bonus > 0 ? 'rgba(79,122,56,.35)' : 'transparent'}` }}>
-              <Leaf size={17} strokeWidth={2} color={bonus > 0 ? SCENE.leaf : 'var(--text-muted)'} style={{ flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '.8rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  {divSubjects.length} matière{divSubjects.length > 1 ? 's' : ''} récoltée{divSubjects.length > 1 ? 's' : ''} cette semaine
-                </div>
-                <div style={{ fontSize: '.68rem', color: 'var(--text-muted)' }}>
-                  {bonus > 0 ? 'Un jardin varié rapporte davantage' : 'Récolte 3 matières différentes pour +20 %'}
-                </div>
-              </div>
-              {bonus > 0 && (
-                <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '.74rem', fontWeight: 800,
-                  background: 'rgba(79,122,56,.2)', color: SCENE.leaf, whiteSpace: 'nowrap' }}>
-                  +{Math.round(bonus * 100)} %
-                </span>
-              )}
-            </div>
-
-            {subjects.length === 0 ? (
-              <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 22, padding: '3.5rem 1.5rem',
-                textAlign: 'center', background: `linear-gradient(180deg, ${SCENE.skyTop} 0%, ${SCENE.skyMid} 60%, ${SCENE.skyLow} 100%)` }}>
-                <GardenBackdrop />
-                <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 96 }}><BambooPlant pct={0.15} accent={SCENE.leaf} /></div>
-                  <div style={{ fontSize: '.9rem', fontWeight: 800, color: SCENE.ink }}>Ton jardin attend ses premières pousses</div>
-                  <div style={{ fontSize: '.76rem', color: SCENE.inkSoft, maxWidth: 300 }}>
-                    Ajoute des matières : chaque minute de révision fait grandir un bambou.
-                  </div>
-                </div>
-              </div>
-            ) : (
-              /* La bambouseraie : une seule scène, les plants partagent le même ciel */
-              <div data-tour="tour-home-garden" style={{ position: 'relative', overflow: 'hidden', borderRadius: 22, padding: '26px 18px 20px',
-                background: `linear-gradient(180deg, ${SCENE.skyTop} 0%, ${SCENE.skyMid} 58%, ${SCENE.skyLow} 100%)`,
-                boxShadow: 'inset 0 -30px 50px -30px rgba(126,88,51,.45)' }}>
-                <GardenBackdrop />
-
-                <div className="garden-grid" style={{ position: 'relative', display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill,minmax(168px,1fr))', gap: '28px 14px' }}>
-                  {subjects.map(s => {
-                    const lvl = reserve.potLevels[s.id] || 1;
-                    const target = growthTarget(lvl);
-                    const total = reserve.studyTime[s.id] || 0;
-                    const harvested = reserve.harvested[s.id] || 0;
-                    const available = Math.max(0, total - harvested);
-                    const matureCount = Math.floor(available / target);
-                    const inCurrentGrowth = available % target;
-                    const pct = inCurrentGrowth / target;
-                    const color = s.color || SCENE.leaf;
-                    const canHarvest = matureCount >= 1;
-                    const potProg = reserve.potProgress[s.id] || 0;
-                    return (
-                      <motion.div key={s.id} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: .45, ease: 'easeOut' }}
-                        style={{ position: 'relative', display: 'flex', flexDirection: 'column',
-                          alignItems: 'center', gap: 8 }}>
-
-                        {/* Gain de pièces qui s'envole à la récolte */}
-                        <AnimatePresence>
-                          {harvestFx && harvestFx.subjId === s.id && (
-                            <motion.div initial={{ opacity: 0, y: 10, scale: .7 }}
-                              animate={{ opacity: 1, y: -34, scale: 1.1 }} exit={{ opacity: 0, y: -56 }}
-                              style={{ position: 'absolute', top: 40, zIndex: 6, textAlign: 'center',
-                                pointerEvents: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px',
-                                borderRadius: 20, background: SCENE.cream, color: '#8A5E18', fontWeight: 800,
-                                fontSize: '.8rem', boxShadow: '0 4px 14px rgba(126,88,51,.3)' }}>
-                                +{harvestFx.coins} <CoinIcon size={14} />
-                              </span>
-                              {harvestFx.levelUp && (
-                                <span style={{ fontSize: '.62rem', fontWeight: 800, color: SCENE.leafDeep }}>
-                                  Parcelle niveau supérieur
-                                </span>
-                              )}
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-
-                        <BambooPlant pct={canHarvest ? 1 : pct} accent={color} />
-
-                        {/* Plaquette de bois gravée : l'identité de la matière */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 11px',
-                          borderRadius: 9, maxWidth: '100%',
-                          background: `linear-gradient(180deg, ${SCENE.barkLight}, ${SCENE.bark})`,
-                          boxShadow: '0 2px 6px rgba(62,42,26,.28), inset 0 1px 0 rgba(255,236,205,.28)' }}>
-                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0,
-                            boxShadow: '0 0 0 2px rgba(255,244,231,.35)' }} />
-                          <span style={{ fontSize: '.78rem', fontWeight: 700, color: SCENE.cream,
-                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
-                          <span style={{ fontSize: '.62rem', fontWeight: 800, color: 'rgba(251,244,231,.62)',
-                            whiteSpace: 'nowrap' }}>N{lvl}</span>
-                        </div>
-
-                        {canHarvest ? (
-                          <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: .95 }}
-                            onClick={() => harvest(s.id)}
-                            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                              padding: '8px 14px', borderRadius: 22, border: 'none', cursor: 'pointer',
-                              background: SCENE.leafDeep, color: SCENE.cream, fontSize: '.75rem', fontWeight: 700,
-                              boxShadow: '0 4px 12px rgba(47,82,35,.35)' }}>
-                            <Scissors size={14} strokeWidth={2.2} />
-                            Couper{matureCount > 1 ? ` ×${matureCount}` : ''}
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, opacity: .9 }}>
-                              · {Math.round(matureCount * coinValue(lvl) * (1 + bonus))} <CoinIcon size={12} />
-                            </span>
-                          </motion.button>
-                        ) : (
-                          <div style={{ width: '100%', maxWidth: 132, display: 'flex', flexDirection: 'column',
-                            alignItems: 'center', gap: 5 }}>
-                            <div style={{ width: '100%', height: 5, borderRadius: 10, overflow: 'hidden',
-                              background: 'rgba(126,88,51,.18)' }}>
-                              <motion.div animate={{ width: `${Math.max(3, pct * 100)}%` }}
-                                transition={{ duration: .6, ease: 'easeOut' }}
-                                style={{ height: '100%', borderRadius: 10, background: color }} />
-                            </div>
-                            <div style={{ fontSize: '.66rem', fontWeight: 600, color: SCENE.inkSoft }}>
-                              {inCurrentGrowth} / {target} min
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Progression vers le niveau suivant de la parcelle */}
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          {Array.from({ length: BAMBOOS_PER_LEVEL }).map((_, i) => (
-                            <span key={i} style={{ width: 14, height: 3, borderRadius: 3,
-                              background: i < potProg ? color : 'rgba(126,88,51,.22)' }} />
-                          ))}
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </motion.div>
+          <GardenTab garden={reserve.bamboo} subjects={subjects} coins={reserve.coins}
+            onCut={cutGarden} onBuyPlot={buyPlot} />
         )}
 
         {/* ── BOUTIQUE ── */}

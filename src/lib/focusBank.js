@@ -10,7 +10,8 @@
  *   users/{uid}/data/main    : xp, level, todayMins, todaySess, statsDay,
  *                              streak, lastStudyDay, totalFocusHours, leaves,
  *                              sessions (last 30)
- *   users/{uid}/data/reserve : studyTime[subjId], energy, lastStudyDay
+ *   users/{uid}/data/reserve : bamboo (the garden), studyTime[subjId],
+ *                              energy, lastStudyDay
  *
  * XP rule: 10 XP per FULL minute focused (a 59-second session earns nothing).
  */
@@ -21,6 +22,7 @@ import { levelFromXp } from '../data/levels';
 import { dayKey, daysBetween } from './dayKeys';
 import { syncLeaderboard } from './leaderboard';
 import { reportSaveError } from './notify';
+import { readGarden, writeGarden, addMinutes } from './bambooGarden';
 
 /** XP earned for a number of focused seconds (10 XP per full minute). */
 export function computeXP(secs) {
@@ -81,17 +83,23 @@ export async function bankFocusSession(uid, secs, xp, { subjId = '', mode = 'fre
     await syncLeaderboard(uid, newXp, sessions);
   } catch (e) { reportSaveError(e, `${context} — main session save`); }
 
-  // Reserve doc: per-subject time + energy (streak mirrored for compatibility).
-  if (mins > 0 && subjId) {
+  // Reserve doc: the bamboo grove, plus energy and the per-subject totals.
+  //
+  // The grove is fed by EVERY session, subject or not — one grove for the
+  // whole account, capped by how many bamboos are planted (lib/bambooGarden).
+  // `studyTime` keeps being written next to it: it is the history the old
+  // per-subject garden was built on, and nothing reads it as a live value any
+  // more, so it stays as a record rather than being dropped.
+  if (mins > 0) {
     try {
       const ref = doc(db, 'users', uid, 'data', 'reserve');
       const snap = await getDoc(ref);
       const d = snap.exists() ? snap.data() : {};
       const energy = Math.min(100, (d.energy ?? 50) + Math.ceil(mins / 3));
-      await setDoc(ref, {
-        studyTime: { ...(d.studyTime || {}), [subjId]: (d.studyTime?.[subjId] || 0) + mins },
-        energy, lastStudyDay: today,
-      }, { merge: true });
+      const grove = writeGarden(addMinutes(readGarden(d), mins, subjId));
+      const patch = { bamboo: grove, energy, lastStudyDay: today };
+      if (subjId) patch.studyTime = { ...(d.studyTime || {}), [subjId]: (d.studyTime?.[subjId] || 0) + mins };
+      await setDoc(ref, patch, { merge: true });
     } catch (e) { reportSaveError(e, `${context} — reserve save`); }
   }
 }
