@@ -17,6 +17,8 @@ import GardenTab from '../components/GardenTab';
 import GardenStyleTab from '../components/GardenStyleTab';
 import { readGarden, writeGarden, afterCut, cutValue, nextSlotPrice, MAX_SLOTS } from '../lib/bambooGarden';
 import { speciesPrice } from '../lib/plantSpecies';
+import { questState, claimQuest } from '../lib/dailyQuests';
+import DailyQuests from '../components/DailyQuests';
 
 const ROOMS = [
   { id: 'piece',        image: asset('reserve/rooms/piece.jpg'),        unlockXp: 0,    unlockCoins: 0   },
@@ -107,9 +109,15 @@ export default function PageReserve({ user }) {
   const { t } = useTranslation();
   const tour = useGuidedTour('home');
   const [subjects, setSubjects] = useState([]);
+  const [main, setMain] = useState(null);      // the whole main document (quests)
+  const [claiming, setClaiming] = useState(null);
+  // The day of the quests is frozen when the page opens, so the list shown and
+  // the claim that pays it always agree (a render must not read the clock).
+  const [questDay] = useState(() => new Date());
   const [reserve, setReserve] = useState({
     studyTime: {}, harvested: {}, coins: 0,
     bamboo: { v: 2, pool: 0, slots: 1, by: {} },
+    quests: null,
     purchasedCounts: {}, placedItems: [],
     // These two were missing: they only appeared once data/reserve existed, so
     // an account that had never written it read `rooms[id]` off undefined and
@@ -168,8 +176,10 @@ export default function PageReserve({ user }) {
     if (!user) return;
     const unsub = onSnapshot(doc(db, 'users', user.uid, 'data', 'main'), snap => {
       if (snap.exists()) {
-        setSubjects(snap.data().subjects || []);
-        setUserXp(snap.data().xp || 0);
+        const d = snap.data();
+        setMain(d);
+        setSubjects(d.subjects || []);
+        setUserXp(d.xp || 0);
       }
     });
     return unsub;
@@ -190,6 +200,7 @@ export default function PageReserve({ user }) {
           coins: d.coins || 0,
           bamboo: writeGarden(garden),
           purchasedCounts: d.purchasedCounts || {},
+          quests: d.quests || null,
           rooms: d.rooms || {},
           unlockedRooms: d.unlockedRooms || ['piece'],
         });
@@ -243,6 +254,26 @@ export default function PageReserve({ user }) {
       await setDoc(doc(db, 'users', user.uid, 'data', 'reserve'),
         { coins: newCoins, bamboo: next }, { merge: true });
     } catch (e) { reportSaveError(e); }
+  }
+
+  /**
+   * Pays one finished quest. The reward and the new claim list both come from
+   * lib/dailyQuests.js, which refuses a quest that is not finished or that was
+   * already collected today — so a double click cannot pay twice.
+   */
+  async function claimDailyQuest(questId) {
+    if (claiming) return;
+    const claim = claimQuest(main || {}, reserve, user.uid, questId, questDay);
+    if (!claim) return;
+    setClaiming(questId);
+    const newCoins = (reserve.coins || 0) + claim.coins;
+
+    setReserve(r => ({ ...r, coins: newCoins, quests: claim.quests }));
+    try {
+      await setDoc(doc(db, 'users', user.uid, 'data', 'reserve'),
+        { coins: newCoins, quests: claim.quests }, { merge: true });
+    } catch (e) { reportSaveError(e); }
+    setClaiming(null);
   }
 
   /** Plants a species already owned. */
@@ -436,8 +467,13 @@ export default function PageReserve({ user }) {
 
         {/* ── JARDIN ── */}
         {tab === 'garden' && (
-          <GardenTab garden={reserve.bamboo} subjects={subjects} coins={reserve.coins}
-            onCut={cutGarden} onBuyPlot={buyPlot} />
+          <motion.div key="garden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <DailyQuests state={questState(main || {}, reserve, user.uid, questDay)}
+              onClaim={claimDailyQuest} busyId={claiming} />
+            <GardenTab garden={reserve.bamboo} subjects={subjects} coins={reserve.coins}
+              onCut={cutGarden} onBuyPlot={buyPlot} />
+          </motion.div>
         )}
 
         {/* ── PLANTES ── */}
