@@ -16,6 +16,10 @@ import { db, rtdb } from '../firebase/config';
 import { ref as dbRef, onValue, set, remove, onDisconnect } from 'firebase/database';
 import { Square, FolderOpen, Trophy, Trees } from 'lucide-react';
 import UserProfileModal from '../components/UserProfileModal';
+// The conversation id rule lives in lib/privateMessages, so the chat and the
+// admin tool cannot end up addressing two different conversations.
+import { convIdFor } from '../lib/privateMessages';
+import { ADMIN_UIDS } from '../lib/admin';
 import {
   collection, doc, getDoc, getDocs, setDoc, deleteDoc, addDoc,
   onSnapshot, query, orderBy, limit, limitToLast, where, updateDoc, arrayUnion, arrayRemove, deleteField,
@@ -51,10 +55,19 @@ function generateCode() {
   return 'BLK-' + Math.random().toString(36).slice(2, 6).toUpperCase();
 }
 
-// Deterministic convId: always the same for a pair of users.
-// Firestore rules expect the format uidA_uidB.
-function convIdFor(uidA, uidB) {
-  return [uidA, uidB].sort().join('_');
+/**
+ * Who this account can have a private conversation with: its friends, plus any
+ * administrator it is not already friends with.
+ *
+ * An administrator can open a conversation with anyone, so the thread has to
+ * appear on the other side even with no friendship between the two. No extra
+ * field and no extra query are needed for that: ADMIN_UIDS is already on the
+ * client, so the conversation id is computable, and the conversation is read
+ * exactly like any other.
+ */
+function conversationPartners(friends, adminContacts) {
+  const known = new Set(friends.map(f => f.uid));
+  return [...friends, ...adminContacts.filter(a => !known.has(a.uid))];
 }
 
 function Avatar({ name, size = 32, color, online = false, photoURL = null }) {
@@ -2019,6 +2032,26 @@ export default function PageGroups({ user, prefs, unreadByGroup = {}, onMarkRead
   // Kept for compat: manual reload (now a no-op, real-time handles everything).
   function loadGroups() {}
 
+  // The administrators this account may already have a thread with. Their
+  // pseudo comes from the public leaderboard document; a missing one falls back
+  // to a generic label at render time, so `t` stays out of this effect (it is
+  // not a stable reference and would re-run it on every render).
+  const [adminContacts, setAdminContacts] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    // Promise.all of an empty list resolves to an empty list, so the case of
+    // an account that IS the only administrator needs no special branch.
+    Promise.all(ADMIN_UIDS.filter(uid => uid !== user.uid).map(async uid => {
+      let pseudo = '';
+      try {
+        const snap = await getDoc(doc(db, 'leaderboard', uid));
+        pseudo = snap.data()?.pseudo || '';
+      } catch { /* unreadable: the fallback label covers it */ }
+      return { uid, pseudo, isAdmin: true };
+    })).then(list => { if (alive) setAdminContacts(list); });
+    return () => { alive = false; };
+  }, [user.uid]);
+
   // Listen to the friend list.
   useEffect(() => {
     if (!user) return;
@@ -2038,8 +2071,9 @@ export default function PageGroups({ user, prefs, unreadByGroup = {}, onMarkRead
 
   // Last message preview of each private conversation.
   useEffect(() => {
-    if (!friends.length) { setPrivatePreviews({}); return; }
-    const unsubs = friends.map(f => {
+    const partners = conversationPartners(friends, adminContacts);
+    if (!partners.length) { setPrivatePreviews({}); return; }
+    const unsubs = partners.map(f => {
       const cid = convIdFor(user.uid, f.uid);
       const qq = query(collection(db, 'privateMessages', cid, 'messages'), orderBy('sentAt', 'desc'), limit(1));
       return onSnapshot(qq, snap => {
@@ -2048,7 +2082,7 @@ export default function PageGroups({ user, prefs, unreadByGroup = {}, onMarkRead
       }, () => {});
     });
     return () => unsubs.forEach(u => u());
-  }, [friends, user.uid]);
+  }, [friends, adminContacts, user.uid]);
 
   // Listen to private-conversation last-reads (stored on your user doc).
   useEffect(() => {
@@ -2265,7 +2299,13 @@ export default function PageGroups({ user, prefs, unreadByGroup = {}, onMarkRead
           unread: unreadByGroup[g.id] || 0,
           data: g,
         }));
-        const privateItems = friends.map(f => {
+        // An administrator only appears once there is something to read: no
+        // empty thread with the staff in everyone's list.
+        const partners = conversationPartners(
+          friends,
+          adminContacts.map(a => ({ ...a, pseudo: a.pseudo || t('groups.adminContact') })),
+        );
+        const privateItems = partners.map(f => {
           const cid = convIdFor(user.uid, f.uid);
           const prev = privatePreviews[cid];
           const lastRead = lastReadPrivate[cid];
@@ -2279,7 +2319,7 @@ export default function PageGroups({ user, prefs, unreadByGroup = {}, onMarkRead
             data: f,
             preview: prev,
           };
-        });
+        }).filter(it => !it.data.isAdmin || it.ts);
 
         // 2. Filter by tab.
         let items;

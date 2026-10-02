@@ -35,12 +35,14 @@ import {
 import {
   BarChart3, Users as UsersIcon, MessageSquare, Palette, Settings, Radio,
   RefreshCw, Search, Copy, Trash2, Save, X, AlertTriangle, Megaphone, Wrench, ToggleRight,
+  Send,
 } from 'lucide-react';
-import { db } from '../firebase/config';
+import { auth, db } from '../firebase/config';
 import { THEMES, FONTS } from '../themes/themes';
 import { BADGES } from '../data/badges';
 import { levelFromXp } from '../data/levels';
-import { reportSaveError } from '../lib/notify';
+import { reportSaveError, notify } from '../lib/notify';
+import { sendPrivateMessage } from '../lib/privateMessages';
 import { useTranslation } from '../i18n';
 import { FEATURES, FEATURE_IDS, readFeatures, isEnabled } from '../lib/features';
 import { DEV, fmt, inputStyle } from '../lib/devConsole';
@@ -279,6 +281,8 @@ function TabUsers() {
   const [selected, setSelected] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [form, setForm] = useState({ xp: 0, level: 1, streak: 0 });
+  const [dm, setDm] = useState('');          // body of the private message
+  const [sendingDm, setSendingDm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState('');
@@ -318,6 +322,37 @@ function TabUsers() {
       setForm(f => ({ ...f, level }));
     } catch (e) { reportSaveError(e, 'DevPanel — save user'); }
     setSaving(false);
+  }
+
+  /**
+   * Send a private message to the selected account, friendship or not.
+   *
+   * It lands in the ordinary conversation between the two accounts
+   * (privateMessages/{convId}/messages) and reads as a normal message on the
+   * other side — nothing marks it as coming from a panel. The recipient sees
+   * the thread even without being a friend, because PageGroups always watches
+   * the conversation with an administrator.
+   *
+   * Errors are surfaced, never swallowed: if the Firestore rules refuse a DM
+   * between two accounts that are not friends, this is where it shows.
+   */
+  async function sendDm() {
+    const me = auth.currentUser;
+    if (!me || !selected?.uid || !dm.trim() || sendingDm) return;
+    setSendingDm(true);
+    try {
+      await sendPrivateMessage({
+        fromUid: me.uid,
+        fromPseudo: me.displayName || me.email?.split('@')[0] || 'Admin',
+        toUid: selected.uid,
+        text: dm,
+      });
+      setDm('');
+      notify('system.dmSent', 'success');
+    } catch (e) {
+      reportSaveError(e, 'DevPanel — private message');
+    }
+    setSendingDm(false);
   }
 
   async function removeFromLeaderboard(uid) {
@@ -451,6 +486,21 @@ function TabUsers() {
 
                 <ToolButton icon={Save} onClick={saveUser} disabled={saving} tone="var(--accent)">
                   {saving ? 'Enregistrement…' : 'Appliquer'}
+                </ToolButton>
+              </div>
+            )}
+
+            {/* Private message — available whatever the account holds, since
+                it writes to the conversation, not to the user document. */}
+            {selected.uid !== auth.currentUser?.uid && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>Message privé</span>
+                <textarea value={dm} onChange={e => setDm(e.target.value)} rows={3}
+                  placeholder="Écrire à ce compte…"
+                  onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendDm(); }}
+                  style={{ ...inputStyle, width: '100%', resize: 'vertical', boxSizing: 'border-box' }} />
+                <ToolButton icon={Send} onClick={sendDm} disabled={!dm.trim() || sendingDm} tone="var(--accent)">
+                  {sendingDm ? 'Envoi…' : 'Envoyer'}
                 </ToolButton>
               </div>
             )}
