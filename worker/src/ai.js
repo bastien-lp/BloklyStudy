@@ -20,19 +20,19 @@
  * ai_unavailable, ai_busy, ai_failed, ai_empty.
  */
 
-const MIN_TEXT_CHARS   = 150;
-const MAX_TEXT_CHARS   = 8000;
+export const MIN_TEXT_CHARS = 150;
+export const MAX_TEXT_CHARS = 8000;
 const MAX_BODY_BYTES   = 40_000;
 const MIN_CARDS        = 3;
 const MAX_CARDS        = 15;
 const DEFAULT_CARDS    = 8;
 const MAX_Q_LENGTH     = 300;
 const MAX_A_LENGTH     = 600;
-const DEFAULT_LIMIT    = 5;
+export const DEFAULT_LIMIT = 5;
 const QUOTA_TTL_SEC    = 2 * 86_400;
 const DEFAULT_MODEL    = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
-const LANGUAGE_NAMES = { fr: 'French', en: 'English', es: 'Spanish', de: 'German' };
+export const LANGUAGE_NAMES = { fr: 'French', en: 'English', es: 'Spanish', de: 'German' };
 
 const CARDS_SCHEMA = {
   type: 'object',
@@ -58,8 +58,7 @@ export async function generateFlashcards({ request, env, uid }) {
   const { text, count, lang } = input;
 
   const limit = Number(env.AI_DAILY_LIMIT) || DEFAULT_LIMIT;
-  const quotaKey = `ai:flashcards:${uid}:${new Date().toISOString().slice(0, 10)}`;
-  const used = Number(await env.KV.get(quotaKey)) || 0;
+  const { used, key: quotaKey } = await readQuota(env, uid);
   if (used >= limit) return fail('daily_limit', 429, { limit });
 
   let raw;
@@ -73,9 +72,34 @@ export async function generateFlashcards({ request, env, uid }) {
   const cards = sanitizeCards(raw, count);
   if (!cards.length) return fail('ai_empty', 502);
 
-  // Only successful generations count toward the quota.
-  await env.KV.put(quotaKey, String(used + 1), { expirationTtl: QUOTA_TTL_SEC });
+  await spendQuota(env, quotaKey, used);
   return { body: { cards, remaining: Math.max(0, limit - used - 1) }, status: 200 };
+}
+
+/**
+ * Today's AI quota of a user: `{ used, key }`. The counter is shared by every
+ * AI route (flashcards, quiz): one daily budget per student. The key keeps its
+ * original name so counters already running are not reset.
+ */
+export async function readQuota(env, uid) {
+  const key = `ai:flashcards:${uid}:${new Date().toISOString().slice(0, 10)}`;
+  return { used: Number(await env.KV.get(key)) || 0, key };
+}
+
+/**
+ * GET /ai/quota — what is left of today's AI budget, so the app can say so
+ * BEFORE a generation: `{ limit, remaining }`. Reading it costs nothing.
+ */
+export async function getAiQuota({ env, uid }) {
+  if (!env.KV) return fail('ai_unavailable', 503);
+  const limit = Number(env.AI_DAILY_LIMIT) || DEFAULT_LIMIT;
+  const { used } = await readQuota(env, uid);
+  return { body: { limit, remaining: Math.max(0, limit - used) }, status: 200 };
+}
+
+/** Only successful generations count toward the quota. */
+export function spendQuota(env, key, used) {
+  return env.KV.put(key, String(used + 1), { expirationTtl: QUOTA_TTL_SEC });
 }
 
 function fail(error, status, extra = {}) {
@@ -129,19 +153,21 @@ async function runModel(env, text, count, lang) {
   return result?.response;
 }
 
+/** The model output (object or JSON text) as an object, or null. */
+export function parseModelJson(raw) {
+  if (typeof raw !== 'string') return raw ?? null;
+  // Some models wrap JSON in prose or code fences: keep the outermost object.
+  const match = raw.match(/\{[\s\S]*\}/);
+  try {
+    return match ? JSON.parse(match[0]) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Accepts the model output (object or JSON text) and returns clean `{ q, a }` cards. */
 function sanitizeCards(raw, count) {
-  let parsed = raw;
-  if (typeof raw === 'string') {
-    // Some models wrap JSON in prose or code fences: keep the outermost object.
-    const match = raw.match(/\{[\s\S]*\}/);
-    try {
-      parsed = match ? JSON.parse(match[0]) : null;
-    } catch {
-      parsed = null;
-    }
-  }
-
+  const parsed = parseModelJson(raw);
   const list = Array.isArray(parsed?.cards) ? parsed.cards : [];
   const seen = new Set();
   const cards = [];
@@ -157,6 +183,6 @@ function sanitizeCards(raw, count) {
   return cards;
 }
 
-function clean(value, maxLength) {
+export function clean(value, maxLength) {
   return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, maxLength) : '';
 }

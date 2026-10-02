@@ -7,6 +7,11 @@
  *
  * Public decks live in the top-level `public_decks` collection.
  *
+ * Each chapter has two review types: the flashcards (swipe quiz) and the
+ * multiple-choice questions ("QCM", lib/mcq.js), whose wrong answers are
+ * chosen to look like the right one. QCM sets live in their own document,
+ * `users/{uid}/data/mcq`, under the same "<subjectId>_<chapterIndex>" keys.
+ *
  * The add-card modal can also generate cards from pasted course notes through
  * the Cloudflare worker (see src/lib/aiFlashcards.js). Generated cards are
  * saved exactly like imported ones (`{ q, a, ok: null }`).
@@ -27,6 +32,9 @@ import { doc, onSnapshot, updateDoc, setDoc, deleteField, collection, addDoc, ge
 import { db } from '../firebase/config';
 import FlashcardStack from '../components/FlashcardStack';
 import FlashcardMasonry from '../components/FlashcardMasonry';
+import McqDeck from '../components/quiz/McqDeck';
+import AiQuotaNote from '../components/AiQuotaNote';
+import { subscribeMcqSets, saveMcqSet } from '../lib/mcq';
 import { useTranslation } from '../i18n';
 import { useFeature } from '../lib/appConfig';
 import { GuidedTour, useGuidedTour, TourButton } from '../components/GuidedTour';
@@ -204,10 +212,8 @@ function CardModal({ user, card, subjects, currentSubjId, currentChapIdx, onSave
                 ))}
               </ul>
             )}
-            <div style={{ fontSize: '.65rem', color: 'var(--text-muted)' }}>
-              {t('flashcards.aiHint')}
-              {aiRemaining !== null && ` ${t('flashcards.aiRemaining', { count: aiRemaining })}`}
-            </div>
+            <div style={{ fontSize: '.65rem', color: 'var(--text-muted)' }}>{t('flashcards.aiHint')}</div>
+            <AiQuotaNote user={user} remaining={aiRemaining} />
           </div>
         ) : importMode ? (
           <div>
@@ -216,11 +222,13 @@ function CardModal({ user, card, subjects, currentSubjId, currentChapIdx, onSave
               placeholder={t('flashcards.importPlaceholder')}
               style={{ ...inp, resize: 'vertical' }} />
             {importText && <div style={{ fontSize: '.65rem', color: 'var(--text-muted)', marginTop: 3 }}>{t('flashcards.cardsDetected', { count: parseImport(importText).length })}</div>}
+            <AiQuotaNote free style={{ marginTop: 8 }} />
           </div>
         ) : (
           <>
             <div><label style={lbl}>{t('flashcards.question')} *</label><input value={q} onChange={e => setQ(e.target.value)} style={inp} /></div>
             <div><label style={lbl}>{t('flashcards.answer')} *</label><textarea value={a} onChange={e => setA(e.target.value)} rows={3} style={{ ...inp, resize: 'vertical' }} /></div>
+            {!card && isAiFlashcardsAvailable() && <AiQuotaNote free />}
           </>
         )}
         <div style={{ display: 'flex', gap: 8 }}>
@@ -540,7 +548,10 @@ export default function PageFlashcards({ user }) {
   const [tab, setTab]                     = useState('mine');  // 'mine' | 'hub'
   // The shared decks can be closed from the console (lib/features.js).
   const hubOpen = useFeature('publicDecks');
+  const mcqOpen = useFeature('mcq');
   const [view, setView]                   = useState('grid');  // 'grid' | 'deck' | 'quiz'
+  const [deckMode, setDeckMode]           = useState('cards'); // 'cards' | 'mcq' — review type inside a chapter
+  const [mcqSets, setMcqSets]             = useState({});      // { "<subjectId>_<chapterIndex>": McqItem[] }
   const [quizSubset, setQuizSubset]       = useState('all');   // 'all' | 'missed'
   const [showCardModal, setShowCardModal] = useState(false);
   const [editCard, setEditCard]           = useState(null);
@@ -574,6 +585,11 @@ export default function PageFlashcards({ user }) {
       setQuizSessions(snap.exists() ? (snap.data().sessions || {}) : {});
     }, () => setQuizSessions({}));
     return unsub;
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    return subscribeMcqSets(user.uid, setMcqSets);
   }, [user]);
 
   async function save(updated) {
@@ -611,11 +627,35 @@ export default function PageFlashcards({ user }) {
     results.forEach(r => { const orig = cards.find(c => c.q === r.q); if (orig) orig.ok = r.ok; });
     const updated = { ...flashcards, [k]: cards };
     setFlashcards(updated); save(updated); setView('deck'); setQuizSubset('all');
+    scheduleReviewIfMissed(k, results);
+  }
 
-    // Bridge to spaced repetition: if the user missed cards on this chapter and
-    // it isn't already in the SR cycle, schedule it (same shape as PageRepetition
-    // writes — firstStudy now, empty reviews). Nudges them to revisit what they
-    // struggled with instead of the two memory systems ignoring each other.
+  /** Saves a chapter's QCM set (added, edited or deleted questions). */
+  function handleMcqChange(items) {
+    const k = `${selSubj}_${selChap}`;
+    setMcqSets(prev => ({ ...prev, [k]: items }));
+    saveMcqSet(user.uid, k, items).catch(e => reportSaveError(e, 'Flashcards — save QCM'));
+  }
+
+  /** A QCM practice ended: remember what was right / missed, like a flashcard quiz. */
+  function handleMcqFinished(results) {
+    const k = `${selSubj}_${selChap}`;
+    const items = (mcqSets[k] || []).map(it => {
+      const r = results.find(x => x.q === it.q);
+      return r ? { ...it, ok: r.ok } : it;
+    });
+    handleMcqChange(items);
+    scheduleReviewIfMissed(k, results);
+  }
+
+  /**
+   * Bridge to spaced repetition: if the user missed questions on this chapter
+   * and it isn't already in the SR cycle, schedule it (same shape as
+   * PageRepetition writes — firstStudy now, empty reviews). Nudges them to
+   * revisit what they struggled with instead of the two memory systems
+   * ignoring each other.
+   */
+  function scheduleReviewIfMissed(k, results) {
     const missedNow = results.some(r => r.ok === false);
     if (missedNow && !srData[k]?.firstStudy) {
       const newSr = { ...srData, [k]: { firstStudy: Date.now(), reviews: [] } };
@@ -847,6 +887,28 @@ export default function PageFlashcards({ user }) {
                   style={{ padding: '8px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-secondary)', fontSize: '.8rem', cursor: 'pointer' }}>🔗 {t('flashcards.share')}</motion.button>
               </div>
 
+              {/* Review type: flashcards or multiple-choice questions */}
+              {mcqOpen && (
+                <div role="tablist" aria-label={t('mcq.modeLabel')}
+                  style={{ display: 'flex', gap: 4, background: 'var(--bg-card)', padding: 4, borderRadius: 12, alignSelf: 'flex-start' }}>
+                  {[
+                    { v: 'cards', l: t('mcq.modeFlashcards'), n: openCards.length },
+                    { v: 'mcq', l: t('mcq.modeMcq'), n: (mcqSets[`${selSubj}_${selChap}`] || []).length },
+                  ].map(m => (
+                    <button key={m.v} type="button" role="tab" aria-selected={deckMode === m.v} onClick={() => setDeckMode(m.v)}
+                      style={{ padding: '7px 14px', borderRadius: 9, border: 'none', cursor: 'pointer', fontSize: '.8rem', fontWeight: 700,
+                        background: deckMode === m.v ? 'var(--accent-subtle)' : 'transparent',
+                        color: deckMode === m.v ? 'var(--accent)' : 'var(--text-muted)', transition: 'all .15s' }}>
+                      {m.l} <span style={{ opacity: .7, fontWeight: 600 }}>{m.n}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {mcqOpen && deckMode === 'mcq' ? (
+                <McqDeck user={user} cards={openCards} items={mcqSets[`${selSubj}_${selChap}`] || []}
+                  onChange={handleMcqChange} onFinished={handleMcqFinished} />
+              ) : (<>
               {/* Unified review bar */}
               {openCards.length > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 12, background: 'rgba(39,174,96,.08)', border: '1px solid rgba(39,174,96,.2)', flexWrap: 'wrap' }}>
@@ -883,6 +945,7 @@ export default function PageFlashcards({ user }) {
                   onDelete={handleDelete}
                 />
               )}
+              </>)}
             </motion.div>
           )}
 

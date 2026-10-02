@@ -21,6 +21,24 @@ export const AI_CARD_COUNTS = [5, 8, 12, 15];
 export const isAiFlashcardsAvailable = () => Boolean(WORKER_URL);
 
 /**
+ * Today's AI budget, shared by every AI generation (flashcards, QCM, PDF):
+ * resolves to `{ limit, remaining }`, or null when it cannot be read (no
+ * worker, offline, older worker). Reading it does not use the quota.
+ */
+export async function fetchAiQuota(user) {
+  if (!WORKER_URL || !user) return null;
+  try {
+    const idToken = await user.getIdToken();
+    const res = await fetch(`${WORKER_URL}/ai/quota`, { headers: { Authorization: `Bearer ${idToken}` } });
+    if (!res.ok) return null;
+    const body = await res.json();
+    return Number.isFinite(body.limit) && Number.isFinite(body.remaining) ? body : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Resolves to `{ cards: [{ q, a, ok: null }], remaining }`.
  * Rejects with an Error whose `code` is one of the worker's error codes
  * (daily_limit, text_too_short, ai_busy, …) or `network`.

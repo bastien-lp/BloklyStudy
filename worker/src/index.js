@@ -6,6 +6,8 @@
  *
  *   GET  /events         external .ics calendars → plain events (below)
  *   POST /ai/flashcards  course text → flashcards, via Workers AI (see ai.js)
+ *   POST /ai/quiz        notes or flashcards → multiple-choice questions with plausible wrong answers (aiQuiz.js)
+ *   GET  /ai/quota       today's remaining AI generations (shared by both routes above)
  *   /docs…, /groups/:id/docs  shared synthesis documents, R2 + D1 (see docs.js)
  *   /library…, /docs/:id/library  public synthesis library (see library.js)
  *   /library/:id/comments|rating, /library/follows  comments, ratings, followed schools (libraryCommunity.js)
@@ -41,7 +43,8 @@
  */
 
 import ICAL from 'ical.js';
-import { generateFlashcards } from './ai.js';
+import { generateFlashcards, getAiQuota } from './ai.js';
+import { generateQuiz } from './aiQuiz.js';
 import { docRoutes } from './docs.js';
 import { libraryRoutes } from './library.js';
 import { communityRoutes } from './libraryCommunity.js';
@@ -107,6 +110,8 @@ export default {
 const ROUTES = [
   ['GET', /^\/events$/, handleEvents],
   ['POST', /^\/ai\/flashcards$/, generateFlashcards],
+  ['POST', /^\/ai\/quiz$/, generateQuiz],
+  ['GET', /^\/ai\/quota$/, getAiQuota],
   ...docRoutes,
   ...libraryRoutes,
   ...communityRoutes,

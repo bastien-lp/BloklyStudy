@@ -46,6 +46,7 @@ export const FEATURES = [
   { id: 'library', group: 'tools' },         // the public synthesis library
   { id: 'pdfFlashcards', group: 'tools' },   // making flashcards out of a PDF
   { id: 'quiz', group: 'tools' },            // the live group quiz
+  { id: 'mcq', group: 'tools' },             // multiple-choice questions (QCM), solo and in the live quiz
   { id: 'groupSessions', group: 'tools' },   // live shared focus sessions
   { id: 'groupGrove', group: 'tools' },      // the group's weekly grove
   { id: 'dailyQuests', group: 'tools' },     // the three quests of the day

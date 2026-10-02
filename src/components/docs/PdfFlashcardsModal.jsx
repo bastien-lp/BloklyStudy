@@ -25,6 +25,7 @@ import { extractPdfText } from '../../lib/pdf';
 import { generateAiFlashcards, AI_MIN_TEXT_CHARS, AI_MAX_TEXT_CHARS, AI_CARD_COUNTS } from '../../lib/aiFlashcards';
 import { appendFlashcards } from '../../lib/flashcardStore';
 import { Button } from '../ui';
+import AiQuotaNote from '../AiQuotaNote';
 
 /** Worker / network error code → i18n key (same wording as the Flashcards page). */
 const AI_ERROR_KEYS = {
@@ -62,6 +63,7 @@ export default function PdfFlashcardsModal({ user, doc, pdfUrl, onClose }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [added, setAdded] = useState(null);       // number of cards saved
+  const [remaining, setRemaining] = useState(null); // AI generations left today, after a generation
 
   // Extract the text once.
   useEffect(() => {
@@ -120,6 +122,7 @@ export default function PdfFlashcardsModal({ user, doc, pdfUrl, onClose }) {
     try {
       const res = await generateAiFlashcards(user, { text, count, lang });
       setCards(res.cards);
+      setRemaining(res.remaining);
     } catch (e) {
       setError(AI_ERROR_KEYS[e.code] || 'flashcards.aiErrorGeneric');
     }
@@ -272,6 +275,7 @@ export default function PdfFlashcardsModal({ user, doc, pdfUrl, onClose }) {
 
             {error && <div role="alert" style={{ fontSize: '.74rem', color: 'var(--danger)' }}>{t(error)}</div>}
             <div style={{ fontSize: '.64rem', color: 'var(--text-muted)' }}>{t('flashcards.aiHint')}</div>
+            <AiQuotaNote user={user} remaining={remaining} />
 
             {cards.length > 0 && (
               <Button variant="primary" icon={Check} disabled={busy || !subject} onClick={save}>

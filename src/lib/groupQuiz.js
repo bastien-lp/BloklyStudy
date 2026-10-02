@@ -13,6 +13,10 @@
  * correct choices, so nobody can simply write themselves a high score.
  * Fast correct answers earn more: 1000 points at once, 500 at the buzzer.
  *
+ * Questions come either from flashcards (buildQuestions below: wrong choices
+ * taken from the deck's other answers) or from a QCM set (lib/mcq.js: wrong
+ * choices prepared for each question). Both give the same { q, choices, correct }.
+ *
  * RTDB shape (new path — touches no existing data):
  *   groupQuiz/{groupId}/current : { id, hostUid, hostPseudo, title, secondsPerQ, revealSec,
  *                                   questions: [{ q, choices[4], correct }], totalMs,

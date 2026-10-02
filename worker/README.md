@@ -7,6 +7,8 @@ Firebase Cloud Functions (Spark plan):
 |---|---|---|
 | `GET /events` | External `.ics` calendars in the Planning page | Workers, KV (fallback copy) |
 | `POST /ai/flashcards` | Flashcards generated from course notes | Workers AI, KV (daily quota) |
+| `POST /ai/quiz` | Multiple-choice questions with plausible wrong answers | Workers AI, KV (same daily quota) |
+| `GET /ai/quota` | Today's remaining AI generations | KV |
 | `/docs…`, `/groups/:id/docs` | Synthesis documents, shared with groups | R2 (files), D1 (metadata + accounting), KV (daily upload cap) |
 | `/library…`, `/docs/:id/library` | Public synthesis library (search across schools) | D1 (entries + FTS5 search index) |
 
@@ -48,6 +50,16 @@ The Flashcards page shows a "Generate" tab in the add-card modal only when
 `VITE_CALENDAR_WORKER_URL` is set. Nothing is stored: the notes go to the
 model and the cards go back to the browser, which saves them like imported
 cards. Details and error codes: `src/ai.js`.
+
+`POST /ai/quiz` returns multiple-choice questions whose three wrong answers are
+plausible (same kind and topic as the right one), for the QCM quiz type:
+`{ text, count, lang }` (course notes) or `{ cards: [{ q, a }], lang }` (a
+chapter's flashcards, ≤ 15) → `{ items: [{ q, a, wrong: [3] }], remaining }`.
+It shares the daily quota of `/ai/flashcards`. Details: `src/aiQuiz.js`.
+
+`GET /ai/quota` returns `{ limit, remaining }` for today, so the app can show
+the balance before a generation. Only successful generations count; writing
+by hand and importing text from an external AI never touch the quota.
 
 **Budget.** Workers AI's free allocation is 10,000 neurons/day, shared by the
 whole account; past it, requests are refused (never billed) and users see

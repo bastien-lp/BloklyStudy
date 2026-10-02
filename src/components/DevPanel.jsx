@@ -764,6 +764,7 @@ const FEATURE_LABELS = {
   library: 'Bibliothèque de synthèses',
   pdfFlashcards: 'Flashcards depuis un PDF',
   quiz: 'Quiz de groupe en direct',
+  mcq: 'QCM (solo et quiz de groupe)',
   groupSessions: 'Sessions de focus partagées',
   groupGrove: 'Bambouseraie de groupe',
   dailyQuests: 'Quêtes du jour',
