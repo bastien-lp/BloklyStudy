@@ -73,7 +73,7 @@ export function SystemBanner({ message, maintenance = false }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
-      role="status"
+      role="status" className="system-banner"
       style={{
         display: 'flex', alignItems: 'flex-start', gap: 10,
         padding: '9px 14px',
@@ -95,9 +95,10 @@ export function SystemBanner({ message, maintenance = false }) {
       </div>
 
       {!maintenance && (
-        <button onClick={dismiss} aria-label={t('system.announceDismiss')}
+        <button onClick={dismiss} aria-label={t('system.announceDismiss')} className="banner-close"
           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2,
-            color: 'var(--text-muted)', flexShrink: 0, display: 'flex' }}>
+            color: 'var(--text-muted)', flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <X size={14} />
         </button>
       )}

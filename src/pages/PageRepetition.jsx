@@ -19,10 +19,12 @@ import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useTranslation } from '../i18n';
 import { SR_INTERVALS, nextDueMs, isMastered, nextEase } from '../data/repetition';
+import { bumpChapter, askMode } from '../data/revTracker';
 import { GuidedTour, useGuidedTour, TourButton } from '../components/GuidedTour';
 import { EmptyState } from '../components/ui';
-import { PartyPopper } from 'lucide-react';
+import { PartyPopper, Repeat } from 'lucide-react';
 import { reportSaveError } from '../lib/notify';
+import { PAGE_MAX_W } from '../components/ui/scale';
 
 // ── Mini countdown ring ──────────────────────────────────────────────────────
 function MiniRing({ daysLeft, maxDays = 30, color }) {
@@ -65,7 +67,7 @@ function SRCard({ item, onValidate, onDelete }) {
 
   async function handleValidate(difficulty) {
     setValidating(true);
-    await onValidate(key, difficulty);
+    await onValidate(item, difficulty);
     setValidating(false);
   }
 
@@ -153,7 +155,8 @@ function ChapterGrid({ subjects, srData, onMark }) {
       <h3 style={{ fontSize: '.85rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>📌 {t('repetition.planTitle')}</h3>
 
       {/* Subject pills */}
-      <div style={{ display: 'flex', gap: 5, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none' }}>
+      {/* Wraps rather than scrolling, for the same reason as the planner row. */}
+      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', paddingBottom: 2 }}>
         {subjects.map(s => {
           const active = String(s.id) === selSubj;
           return (
@@ -204,6 +207,73 @@ function ChapterGrid({ subjects, srData, onMark }) {
   );
 }
 
+// ── "Log this revision?" prompt ──────────────────────────────────────────────
+// Shown after a spaced review is validated, when `main.revAskAfterReview` is
+// 'ask'. Its only job is to offer +1 on that chapter's manual counter in the
+// revision tracker (PageProgress). Ticking "always do this" turns the answer
+// into the standing setting — 'always' on confirm, 'never' on dismiss — which
+// stays editable in the tracker itself.
+function LogRevisionModal({ subjectName, chapterName, color, onAnswer }) {
+  const { t } = useTranslation();
+  const [remember, setRemember] = useState(false);
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      onClick={() => onAnswer(false, remember)}
+      style={{ position: 'fixed', inset: 0, zIndex: 1200, display: 'flex', alignItems: 'center',
+        justifyContent: 'center', padding: 16, background: 'rgba(0,0,0,.55)', backdropFilter: 'blur(3px)' }}>
+
+      <motion.div initial={{ scale: .94, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: .96, opacity: 0 }}
+        transition={{ duration: .18, ease: 'easeOut' }}
+        onClick={e => e.stopPropagation()}
+        role="dialog" aria-modal="true" aria-label={t('revTracker.askTitle')}
+        style={{ width: '100%', maxWidth: 340, background: 'var(--bg-modal)', borderRadius: 16,
+          border: '1px solid var(--border-strong)', padding: 'clamp(1rem,4vw,1.3rem)',
+          display: 'flex', flexDirection: 'column', gap: 12, boxShadow: 'var(--card-shadow)' }}>
+
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '.9rem', fontWeight: 800,
+            color: 'var(--text-primary)' }}>
+            <Repeat size={15} strokeWidth={2.2} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+            {t('revTracker.askTitle')}
+          </div>
+          <div style={{ fontSize: '.74rem', color: 'var(--text-secondary)', marginTop: 7, lineHeight: 1.5 }}>
+            {t('revTracker.askBody', { chapter: chapterName })}
+          </div>
+          {/* The subject keeps its colour as a dot, never as text: a pale
+              subject colour on a pale theme is unreadable. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
+            <span style={{ fontSize: '.66rem', color: 'var(--text-muted)' }}>{subjectName}</span>
+          </div>
+        </div>
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '.66rem',
+          color: 'var(--text-secondary)', cursor: 'pointer' }}>
+          <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)}
+            style={{ accentColor: 'var(--accent)', width: 14, height: 14, cursor: 'pointer' }} />
+          {t('revTracker.askRemember')}
+        </label>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => onAnswer(false, remember)}
+            style={{ flex: 1, padding: '9px 10px', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit',
+              fontSize: '.72rem', fontWeight: 600, background: 'var(--bg-card-hover)',
+              border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+            {t('revTracker.askDismiss')}
+          </button>
+          <button onClick={() => onAnswer(true, remember)}
+            style={{ flex: 1, padding: '9px 10px', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit',
+              fontSize: '.72rem', fontWeight: 800, background: 'var(--accent)',
+              border: '1px solid var(--accent)', color: 'var(--bg-base)' }}>
+            {t('revTracker.askConfirm')}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 export default function PageRepetition({ user }) {
   const { t } = useTranslation();
@@ -212,6 +282,9 @@ export default function PageRepetition({ user }) {
   const [srData, setSrData]     = useState({});
   const [loading, setLoading]   = useState(true);
   const [filter, setFilter]     = useState('all'); // 'all' | 'due' | 'soon'
+  const [revCounts, setRevCounts]    = useState({});   // manual revision counters (see PageProgress)
+  const [ask, setAsk]                = useState('ask'); // what a finished review does to them
+  const [pendingLog, setPendingLog]  = useState(null); // chapter awaiting the +1 answer
 
   useEffect(() => {
     if (!user) return;
@@ -220,14 +293,16 @@ export default function PageRepetition({ user }) {
         const d = snap.data();
         setSubjects(d.subjects || []);
         setSrData(d.srData || {});
+        setRevCounts(d.revCounts || {});
+        setAsk(askMode(d.revAskAfterReview));
       }
       setLoading(false);
     });
     return unsub;
   }, [user]);
 
-  async function save(newSr) {
-    try { await updateDoc(doc(db, 'users', user.uid, 'data', 'main'), { srData: newSr }); }
+  async function save(newSr, patch = {}) {
+    try { await updateDoc(doc(db, 'users', user.uid, 'data', 'main'), { srData: newSr, ...patch }); }
     catch (e) { reportSaveError(e, 'Repetition — save'); }
   }
 
@@ -238,7 +313,8 @@ export default function PageRepetition({ user }) {
     setSrData(updated); save(updated);
   }
 
-  function validate(key, difficulty = 'normal') {
+  function validate(item, difficulty = 'normal') {
+    const { key, s: subj, ci, chapName } = item;
     const sr = srData[key];
     if (!sr) return;
     const updated = { ...srData, [key]: {
@@ -246,7 +322,51 @@ export default function PageRepetition({ user }) {
       reviews: [...(sr.reviews || []), Date.now()],
       ease: nextEase(sr.ease, difficulty),
     } };
-    setSrData(updated); save(updated);
+    setSrData(updated);
+
+    // The revision tracker is a manual tally (src/data/revTracker.js). A
+    // finished review can feed it, but only as the student asked to be treated:
+    // straight away, after a prompt, or never.
+    const mode = askMode(ask);
+    if (mode === 'always') {
+      const counts = bumpChapter(revCounts, subj.id, ci, 1);
+      if (counts) {
+        setRevCounts(counts);
+        save(updated, { revCounts: counts });
+        return;
+      }
+    }
+    save(updated);
+    if (mode === 'ask') {
+      setPendingLog({ subjectId: subj.id, ci, chapName, subjName: subj.name, color: subj.color || '#4A90D9' });
+    }
+  }
+
+  /**
+   * Answer of the prompt above: whether to add the +1, and whether that answer
+   * becomes the standing setting (editable later in the tracker).
+   */
+  async function answerLog(confirmed, remember) {
+    const pending = pendingLog;
+    setPendingLog(null);
+    if (!pending) return;
+
+    const patch = {};
+    if (confirmed) {
+      const counts = bumpChapter(revCounts, pending.subjectId, pending.ci, 1);
+      if (counts) {
+        setRevCounts(counts);
+        patch.revCounts = counts;
+      }
+    }
+    if (remember) {
+      const mode = confirmed ? 'always' : 'never';
+      setAsk(mode);
+      patch.revAskAfterReview = mode;
+    }
+    if (!Object.keys(patch).length) return;
+    try { await updateDoc(doc(db, 'users', user.uid, 'data', 'main'), patch); }
+    catch (e) { reportSaveError(e, 'Repetition — revision counter'); }
   }
 
   function deleteEntry(key) {
@@ -255,17 +375,23 @@ export default function PageRepetition({ user }) {
     setSrData(updated); save(updated);
   }
 
-  // Build the list of pending reviews.
+  // Build the list of pending reviews, and the global counters in the same
+  // pass. Walking `srData` on its own counted entries whose subject or chapter
+  // has since been deleted, which is how the card could claim "3/3 mastered,
+  // 100 %" while the list below it was empty.
   const now = Date.now();
   const items = [];
+  let scheduled = 0;   // chapters that exist AND are in the review cycle
+  let mastered = 0;    // of those, the ones that finished every review
   subjects.forEach(s => {
     const chaps = s.chapters || Array.from({ length: s.chaps }, (_, i) => ({ name: t('repetition.chapterFull', { count: i + 1 }) }));
     chaps.forEach((c, i) => {
       const key = `${s.id}_${i}`;
       const sr = srData[key];
       if (!sr) return;
+      scheduled++;
       const ni = (sr.reviews || []).length;
-      if (isMastered(sr)) return;
+      if (isMastered(sr)) { mastered++; return; }
       const dl = Math.ceil((nextDueMs(sr) - now) / 86400000);
       items.push({ s, ci: i, chapName: c.name || t('repetition.chapterFull', { count: i + 1 }), key, ni, daysLeft: dl });
     });
@@ -278,9 +404,10 @@ export default function PageRepetition({ user }) {
 
   const displayed = filter === 'due' ? due : filter === 'soon' ? [...due, ...soon] : items;
 
-  // Global progress.
-  const totalPlanned  = Object.keys(srData).length;
-  const totalFinished = Object.values(srData).filter(isMastered).length;
+  // Global progress — nothing scheduled means nothing mastered, so 0 %, never
+  // the 100 % that 0/0 used to round to.
+  const totalPlanned  = scheduled;
+  const totalFinished = mastered;
   const globalPct     = totalPlanned > 0 ? Math.round(totalFinished / totalPlanned * 100) : 0;
 
   const stats = [
@@ -301,7 +428,7 @@ export default function PageRepetition({ user }) {
   );
 
   return (
-    <div style={{ maxWidth: 800, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ maxWidth: PAGE_MAX_W, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
       <TourButton onClick={tour.start} label={t('common.guidedTour')} />
 
@@ -351,8 +478,8 @@ export default function PageRepetition({ user }) {
           </div>
           <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: .97 }}
             onClick={() => setFilter('due')}
-            style={{ padding: '6px 14px', borderRadius: 9, border: 'none',
-              background: 'rgba(231,76,60,.3)', color: '#fff',
+            style={{ padding: '6px 14px', borderRadius: 9, border: '1px solid var(--danger)',
+              background: 'transparent', color: 'var(--danger)',
               fontSize: '.75rem', fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
             {t('repetition.see')} →
           </motion.button>
@@ -416,6 +543,13 @@ export default function PageRepetition({ user }) {
         </div>
       )}
       </div>
+
+      <AnimatePresence>
+        {pendingLog && (
+          <LogRevisionModal subjectName={pendingLog.subjName} chapterName={pendingLog.chapName}
+            color={pendingLog.color} onAnswer={answerLog} />
+        )}
+      </AnimatePresence>
 
       <GuidedTour active={tour.active} step={tour.step} steps={tour.steps}
         onNext={tour.next} onPrev={tour.prev} onStop={tour.stop} />

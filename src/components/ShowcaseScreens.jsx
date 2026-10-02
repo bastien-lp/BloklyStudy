@@ -1075,7 +1075,7 @@ export function ScreenReserve({ t }) {
       </div>
 
       <span style={{ alignSelf: 'center', padding: '9px 20px', borderRadius: 12,
-        background: 'var(--accent)', color: '#fff', fontWeight: 700, fontSize: '.82rem' }}>
+        background: 'var(--accent)', color: 'var(--bg-base)', fontWeight: 700, fontSize: '.82rem' }}>
         + {t('showcase.resAddItem')}
       </span>
     </Page>

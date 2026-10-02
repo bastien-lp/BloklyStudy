@@ -69,7 +69,7 @@ class ErrorBoundaryView extends Component {
           <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
             <button onClick={this.handleRetry}
               style={{ padding: '9px 20px', borderRadius: 12, border: 'none', cursor: 'pointer',
-                background: 'var(--accent)', color: '#fff', fontSize: '.82rem', fontWeight: 700 }}>
+                background: 'var(--accent)', color: 'var(--bg-base)', fontSize: '.82rem', fontWeight: 700 }}>
               {t('system.crashRetry')}
             </button>
             <button onClick={() => window.location.reload()}

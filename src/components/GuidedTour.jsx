@@ -592,7 +592,7 @@ export function GuidedTour({ active, step, steps, onNext, onPrev, onStop }) {
               whileHover={{ scale: 1.03 }} whileTap={{ scale: .97 }}
               onClick={onNext}
               style={{ flex: 2, padding: '8px', borderRadius: 9, border: 'none',
-                background: 'var(--accent)', color: '#fff',
+                background: 'var(--accent)', color: 'var(--bg-base)',
                 fontSize: '.82rem', fontWeight: 700, cursor: 'pointer',
                 boxShadow: '0 2px 12px var(--accent-glow)' }}>
               {step === steps.length - 1 ? t('tourUi.finish') : t('tourUi.next')}

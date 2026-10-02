@@ -202,7 +202,7 @@ function ChaptersEditor({ subject, onEdit }) {
                   color: 'var(--text-muted)', fontSize: '.72rem', cursor: 'pointer', marginTop: 2 }}>
                 + {t('app.addChapter')}
               </button>
-              {saving && <span style={{ fontSize: '.62rem', color: 'rgba(255,255,255,.25)' }}>{t('app.saving')}</span>}
+              {saving && <span style={{ fontSize: '.62rem', color: 'var(--text-placeholder)' }}>{t('app.saving')}</span>}
             </div>
           </motion.div>
         )}
@@ -297,7 +297,7 @@ function SubjectModal({ onAdd, onDelete, onEdit, subjects, onClose }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 4 }}>
                   <input type="color" value={color} onChange={e => setColor(e.target.value)}
                     style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'transparent', cursor: 'pointer', padding: 0 }} />
-                  <span style={{ fontSize: '.65rem', color: 'rgba(255,255,255,.3)', fontFamily: 'monospace' }}>{color}</span>
+                  <span style={{ fontSize: '.65rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{color}</span>
                 </div>
               </div>
             </div>
@@ -321,19 +321,19 @@ function SubjectModal({ onAdd, onDelete, onEdit, subjects, onClose }) {
             </div>
             <div>
               <label style={{ fontSize: '.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
-                {t('app.teacher')} <span style={{ color: 'rgba(255,255,255,.2)' }}>{t('app.optional')}</span>
+                {t('app.teacher')} <span style={{ color: 'var(--text-placeholder)' }}>{t('app.optional')}</span>
               </label>
               <input value={teacher} onChange={e => setTeacher(e.target.value)}
                 placeholder={t('app.teacherPlaceholder')} style={inp} maxLength={60} />
             </div>
             <div>
               <label style={{ fontSize: '.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
-                {t('app.chapterNames')} <span style={{ color: 'rgba(255,255,255,.2)' }}>{t('app.optional')}</span>
+                {t('app.chapterNames')} <span style={{ color: 'var(--text-placeholder)' }}>{t('app.optional')}</span>
               </label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 150, overflowY: 'auto' }}>
                 {chapNames.map((n, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: '.65rem', color: 'rgba(255,255,255,.3)', minWidth: 18 }}>{i + 1}.</span>
+                    <span style={{ fontSize: '.65rem', color: 'var(--text-muted)', minWidth: 18 }}>{i + 1}.</span>
                     <input value={n} onChange={e => { const a = [...chapNames]; a[i] = e.target.value; setChapNames(a); }}
                       placeholder={t('app.chapterDefault', { count: i + 1 })}
                       style={{ ...inp, flex: 1, padding: '5px 8px', fontSize: '.76rem' }} />
@@ -358,7 +358,7 @@ function SubjectModal({ onAdd, onDelete, onEdit, subjects, onClose }) {
         {tab === 'manage' && (
           <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
             {subjects.length === 0 && (
-              <p style={{ color: 'rgba(255,255,255,.3)', fontSize: '.83rem', textAlign: 'center', padding: '1rem' }}>{t('app.noSubjects')}</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: '.83rem', textAlign: 'center', padding: '1rem' }}>{t('app.noSubjects')}</p>
             )}
             {subjects.map(s => (
               <div key={s.id}>
@@ -367,7 +367,7 @@ function SubjectModal({ onAdd, onDelete, onEdit, subjects, onClose }) {
                   <div style={{ padding: '10px 12px', borderRadius: 10, background: 'rgba(231,76,60,.1)', border: '1px solid rgba(231,76,60,.3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                     <span style={{ fontSize: '.78rem', color: '#ff6b6b' }}>{t('app.deleteConfirm', { name: s.name })}</span>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => setConfirmDel(null)} style={{ padding: '4px 10px', borderRadius: 7, border: '1px solid rgba(255,255,255,.1)', background: 'transparent', color: 'rgba(255,255,255,.5)', fontSize: '.72rem', cursor: 'pointer' }}>{t('app.no')}</button>
+                      <button onClick={() => setConfirmDel(null)} style={{ padding: '4px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: '.72rem', cursor: 'pointer' }}>{t('app.no')}</button>
                       <button onClick={async () => { await onDelete(s.id); setConfirmDel(null); }}
                         style={{ padding: '4px 10px', borderRadius: 7, border: 'none', background: 'rgba(231,76,60,.7)', color: '#fff', fontSize: '.72rem', cursor: 'pointer', fontWeight: 700 }}>{t('app.yes')}</button>
                     </div>
@@ -383,14 +383,14 @@ function SubjectModal({ onAdd, onDelete, onEdit, subjects, onClose }) {
                       ))}
                       <input type="color" value={editColor} onChange={e => setEditColor(e.target.value)}
                         style={{ width: 22, height: 22, borderRadius: '50%', border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, flexShrink: 0 }} />
-                      <span style={{ fontSize: '.6rem', color: 'rgba(255,255,255,.3)', fontFamily: 'monospace' }}>{editColor}</span>
+                      <span style={{ fontSize: '.6rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{editColor}</span>
                     </div>
                     <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} style={{ ...inp, padding: '6px 8px' }} />
                     <input value={editTeacher} onChange={e => setEditTeacher(e.target.value)} maxLength={60}
                       placeholder={t('app.teacherPlaceholder')} aria-label={t('app.teacher')}
                       style={{ ...inp, padding: '6px 8px' }} />
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => setEditId(null)} style={{ flex: 1, padding: '6px', borderRadius: 8, border: '1px solid rgba(255,255,255,.1)', background: 'transparent', color: 'rgba(255,255,255,.4)', fontSize: '.75rem', cursor: 'pointer' }}>{t('common.cancel')}</button>
+                      <button onClick={() => setEditId(null)} style={{ flex: 1, padding: '6px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: '.75rem', cursor: 'pointer' }}>{t('common.cancel')}</button>
                       <button onClick={handleEdit} style={{ flex: 2, padding: '6px', borderRadius: 8, border: 'none', background: '#4A90D9', color: '#fff', fontSize: '.75rem', fontWeight: 700, cursor: 'pointer' }}>
                         {saving ? '…' : `✓ ${t('app.save')}`}
                       </button>
@@ -412,7 +412,7 @@ function SubjectModal({ onAdd, onDelete, onEdit, subjects, onClose }) {
                       </span>
                       {s.date && <span style={{ fontSize: '.65rem', color: 'var(--text-muted)' }}>{formatDate(s.date, { day: 'numeric', month: 'short' })}</span>}
                       <button onClick={() => startEdit(s)}
-                        style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid rgba(255,255,255,.1)', background: 'transparent', color: 'rgba(255,255,255,.5)', fontSize: '.8rem', cursor: 'pointer' }}>✏️</button>
+                        style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: '.8rem', cursor: 'pointer' }}>✏️</button>
                       <button onClick={() => setConfirmDel(s.id)}
                         style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid rgba(231,76,60,.2)', background: 'rgba(231,76,60,.08)', color: '#E74C3C', fontSize: '.8rem', cursor: 'pointer' }}>🗑</button>
                     </div>
@@ -510,6 +510,16 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
   const [showDevCode, setShowDevCode]   = useState(false);
   const [showDevPanel, setShowDevPanel] = useState(false);
   const [tutoPage, setTutoPage] = useState(null);
+
+  // Thirteen tabs, four of them visible on a phone: the active one is
+  // scrolled into view whenever it changes, so the page you are on is never
+  // off-screen with nothing to say so.
+  const tabsBarRef = useRef(null);
+  const activeTabRef = useRef(null);
+  useEffect(() => {
+    if (!activeTabRef.current || !tabsBarRef.current) return;
+    activeTabRef.current.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+  }, [activeTab]);
 
   // Spaced-review due count (badge on the "Rév. J" tab).
   useEffect(() => {
@@ -858,7 +868,7 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
       {/* ── Tabs bar ── */}
       {/* Closed features (lib/features.js) leave the bar; an administrator
           keeps them, with a dot, so what is being fixed stays reachable. */}
-      <div style={{ overflowX: 'auto', scrollbarWidth: 'none',
+      <div ref={tabsBarRef} style={{ overflowX: 'auto', scrollbarWidth: 'none',
         background: 'var(--bg-nav)', borderBottom: '1px solid var(--border)',
         position: 'sticky', top: 56, zIndex: 99 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 8px', width: 'max-content', minWidth: '100%', justifyContent: 'center' }}>
@@ -867,6 +877,8 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
             const closed = !isEnabled(features, featureOfTab(tab.id));
             return (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                ref={isActive ? activeTabRef : undefined}
+                className="app-tab"
                 style={{ display: 'flex', alignItems: 'center', gap: 4,
                   padding: '6px 10px', border: 'none', cursor: 'pointer', borderRadius: 8,
                   whiteSpace: 'nowrap', flexShrink: 0, transition: 'all .2s',
@@ -907,7 +919,9 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
       </div>
 
       {/* ── Page content ── */}
-      <main style={{ flex: 1, padding: 'clamp(0.75rem, 3vw, 1.5rem)', paddingBottom: '6rem', overflowY: 'auto' }}>
+      <main style={{ flex: 1, padding: 'clamp(0.75rem, 3vw, 1.5rem)', overflowY: 'auto',
+        /* Clear the floating dock: its height plus a breath of margin. */
+        paddingBottom: 'calc(var(--dock-h) + 1.5rem)' }}>
         <AnimatePresence mode="wait">
           <motion.div key={activeTab}
             initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}
@@ -951,17 +965,17 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
         maxWidth: 'calc(100vw - 32px)',
       }}>
         {[
-          { Icon: CalendarDays, label: t('app.tabPlanning'), tab: 'planning', color: '#4A90D9' },
-          { Icon: Users,        label: t('app.tabGroups'),   tab: 'groups',   color: '#9B59B6' },
+          { Icon: CalendarDays, label: t('app.tabPlanning'), tab: 'planning' },
+          { Icon: Users,        label: t('app.tabGroups'),   tab: 'groups' },
         ].map(item => (
           <motion.button key={item.tab}
             onClick={() => setActiveTab(item.tab)}
             whileHover={{ scale: 1.2, y: -4 }} whileTap={{ scale: .95 }} title={item.label}
             style={{ width: 40, height: 40, borderRadius: 12, border: 'none', cursor: 'pointer',
-              background: activeTab === item.tab ? `${item.color}25` : 'var(--bg-card)',
+              background: activeTab === item.tab ? 'var(--accent-subtle)' : 'var(--bg-card)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: activeTab === item.tab ? item.color : 'var(--text-muted)',
-              boxShadow: activeTab === item.tab ? `0 0 12px ${item.color}40` : 'none',
+              color: activeTab === item.tab ? 'var(--accent)' : 'var(--text-muted)',
+              boxShadow: activeTab === item.tab ? '0 0 12px var(--accent-glow)' : 'none',
               transition: 'background .2s, box-shadow .2s, color .2s', position: 'relative' }}>
             <item.Icon size={18} strokeWidth={activeTab === item.tab ? 2.2 : 1.8} />
             {item.tab === 'groups' && unreadBadge > 0 && (
@@ -1028,7 +1042,7 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
             <motion.div initial={{ scale: .9, y: 20 }} animate={{ scale: 1, y: 0 }}
               style={{ background: '#0a0a18', border: '1px solid rgba(255,100,0,.3)', borderRadius: 16, padding: '2rem', width: 300, maxWidth: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
               <div style={{ fontSize: '1.5rem' }}>🛠️</div>
-              <div style={{ fontSize: '.85rem', color: 'rgba(255,255,255,.6)', textAlign: 'center' }}>
+              <div style={{ fontSize: '.85rem', color: 'var(--text-secondary)', textAlign: 'center' }}>
                 {t('app.devCodePrompt')}
               </div>
               <input type="password" value={devCodeInput}
@@ -1047,7 +1061,7 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
                   border: '1px solid rgba(255,100,0,.3)', background: 'rgba(255,100,0,.05)',
                   color: '#ff6400', fontSize: '1.2rem', letterSpacing: '0.3em',
                   fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' }} />
-              <div style={{ fontSize: '.68rem', color: 'rgba(255,255,255,.25)' }}>
+              <div style={{ fontSize: '.68rem', color: 'var(--text-placeholder)' }}>
                 {t('app.enterToValidate')}
               </div>
             </motion.div>

@@ -36,6 +36,7 @@ import {
   generateAiFlashcards, isAiFlashcardsAvailable,
   AI_MIN_TEXT_CHARS, AI_MAX_TEXT_CHARS, AI_CARD_COUNTS,
 } from '../lib/aiFlashcards';
+import { PAGE_MAX_W } from '../components/ui/scale';
 
 /** Worker error code → i18n key shown under the AI generator. */
 const AI_ERROR_KEYS = {
@@ -717,7 +718,7 @@ export default function PageFlashcards({ user }) {
   );
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 14, fontFamily: 'var(--font-family)' }}>
+    <div style={{ maxWidth: PAGE_MAX_W, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 14, fontFamily: 'var(--font-family)' }}>
       <style>{`
         @media (max-width:600px) {
           .neon-card { width: calc(100vw - 48px) !important; height: 240px !important; }
@@ -741,7 +742,7 @@ export default function PageFlashcards({ user }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <h1 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>🃏 {t('flashcards.title')}</h1>
       </div>
-      <TourButton onClick={tour.start} label={t('common.guidedTour')} align='flex-start' />
+      <TourButton onClick={tour.start} label={t('common.guidedTour')} />
 
       <div data-tour="tour-flash-tabs" style={{ display: 'flex', gap: 4, background: 'var(--bg-card)', padding: 4, borderRadius: 12, alignSelf: 'flex-start' }}>
         {[{ v: 'mine', l: `📚 ${t('flashcards.myCards')}` }, ...(hubOpen ? [{ v: 'hub', l: `🌍 ${t('flashcards.community')}` }] : [])].map(tb => (
@@ -841,7 +842,7 @@ export default function PageFlashcards({ user }) {
                   <div style={{ fontSize: '.68rem', color: 'var(--text-muted)' }}>{subj?.name} · {t('flashcards.deckCount', { count: openCards.length })}</div>
                 </div>
                 <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: .97 }} onClick={() => setShowCardModal(true)}
-                  style={{ padding: '8px 14px', borderRadius: 9, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: '.8rem', fontWeight: 700, cursor: 'pointer' }}>+ {t('flashcards.card')}</motion.button>
+                  style={{ padding: '8px 14px', borderRadius: 9, border: 'none', background: 'var(--accent)', color: 'var(--bg-base)', fontSize: '.8rem', fontWeight: 700, cursor: 'pointer' }}>+ {t('flashcards.card')}</motion.button>
                 <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: .97 }} onClick={() => setShowShare(true)}
                   style={{ padding: '8px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-secondary)', fontSize: '.8rem', cursor: 'pointer' }}>🔗 {t('flashcards.share')}</motion.button>
               </div>
@@ -933,7 +934,7 @@ export default function PageFlashcards({ user }) {
                 </button>
                 <button onClick={() => beginQuiz(resumePrompt.subset, resumePrompt.saved)}
                   style={{ flex: 1, padding: '10px', borderRadius: 11, cursor: 'pointer',
-                    border: 'none', background: 'var(--accent)', color: '#fff',
+                    border: 'none', background: 'var(--accent)', color: 'var(--bg-base)',
                     fontSize: '.82rem', fontWeight: 700 }}>
                   {t('flashcards.resumeBtn')}
                 </button>

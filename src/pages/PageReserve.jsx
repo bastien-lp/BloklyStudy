@@ -19,6 +19,7 @@ import { readGarden, writeGarden, afterCut, cutValue, nextSlotPrice, MAX_SLOTS }
 import { questState, claimQuest } from '../lib/dailyQuests';
 import DailyQuests from '../components/DailyQuests';
 import { useFeature } from '../lib/appConfig';
+import { PAGE_MAX_W } from '../components/ui/scale';
 
 // Affiche soit l'image de l'objet, soit son emoji en repli
 function ItemVisual({ item, size }) {
@@ -316,7 +317,7 @@ export default function PageReserve({ user, prefs }) {
   const addPickerOptions = SHOP_CATALOG.filter(i => availableCount(i.id) > 0);
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ maxWidth: PAGE_MAX_W, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
       <style>{`
         @media (max-width: 600px) {
           .garden-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 22px 10px !important; }
@@ -624,7 +625,7 @@ export default function PageReserve({ user, prefs }) {
                               onClick={e => { e.stopPropagation(); unlockRoom(room.id, room.unlockCoins); }}
                               style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 2,
                                 padding: '7px 14px', borderRadius: 20, border: 'none', cursor: 'pointer',
-                                background: 'var(--accent)', color: '#fff', fontSize: '.72rem', fontWeight: 800 }}>
+                                background: 'var(--accent)', color: 'var(--bg-base)', fontSize: '.72rem', fontWeight: 800 }}>
                               Débloquer · {room.unlockCoins} <CoinIcon size={13} />
                             </motion.button>
                           )}
@@ -752,7 +753,7 @@ export default function PageReserve({ user, prefs }) {
               onClick={() => setAddPickerOpen(true)}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'center',
                 padding: '10px 20px', borderRadius: 22, border: 'none', cursor: 'pointer',
-                background: 'var(--accent)', color: '#fff', fontWeight: 700, fontSize: '.82rem',
+                background: 'var(--accent)', color: 'var(--bg-base)', fontWeight: 700, fontSize: '.82rem',
                 boxShadow: '0 6px 16px -8px var(--accent-glow)' }}>
               <Plus size={16} strokeWidth={2.6} />
               Ajouter un objet

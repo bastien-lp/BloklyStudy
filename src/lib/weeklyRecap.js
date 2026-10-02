@@ -4,8 +4,10 @@
  * Pure: reads the `users/{uid}/data/main` document, writes nothing.
  *
  * Sources and their limits (stated so the UI can be honest about them):
- *   - focus time  : `sessions` — only the LAST 30 focus sessions are kept, so a
- *                   very busy week can be undercounted (`truncated` says so);
+ *   - focus time  : through lib/focusDay, so the week chart, the "today" tile
+ *                   and the daily quests all count a day the same way. Only the
+ *                   LAST 30 focus sessions are kept, so a very busy week can be
+ *                   undercounted (`truncated` says so);
  *   - planning    : `blocks` with a `dateStr` (YYYY-MM-DD) inside the week;
  *   - exams       : `subjects[].date`, upcoming within EXAM_HORIZON_DAYS;
  *   - reviews due : `srData` through the shared `isDue` rule;
@@ -14,6 +16,7 @@
  */
 
 import { isDue } from '../data/repetition';
+import { focusPerDayOfWeek, currentStreak } from './focusDay';
 
 const DAY_MS = 86_400_000;
 const EXAM_HORIZON_DAYS = 30;
@@ -24,6 +27,18 @@ export function startOfWeek(d = new Date()) {
   const shift = (x.getDay() + 6) % 7; // Monday = 0
   x.setDate(x.getDate() - shift);
   return x;
+}
+
+/**
+ * The seven `dateStr` values of a week, written exactly the way the planner
+ * writes them: toISOString() of the LOCAL midnight of each day (east of UTC
+ * that is the previous calendar date). Exported so the Stats recap and the
+ * Progress page cannot disagree about which blocks are "this week".
+ */
+export function weekDateStrings(weekStart = startOfWeek()) {
+  return Array.from({ length: 7 }, (_, i) =>
+    new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + i)
+      .toISOString().slice(0, 10));
 }
 
 /** "YYYY-MM-DD" → local midnight Date (null if malformed). */
@@ -48,18 +63,16 @@ export function weeklyRecap(main = {}, weekStart = startOfWeek(), now = new Date
 
   // ── Focus sessions ──
   const sessions = asArray(main.sessions).filter(s => s && s.at);
-  const perDay = Array(7).fill(0);
+  const week = focusPerDayOfWeek(main, weekStart);
+  const perDay = week.mins;
+  const focusMin = perDay.reduce((a, m) => a + m, 0);
+  const count = week.sessions.reduce((a, n) => a + n, 0);
   const perSubject = {};
-  let focusMin = 0;
   let prevFocusMin = 0;
-  let count = 0;
   for (const s of sessions) {
     const t = new Date(s.at).getTime();
     const mins = Number(s.mins) || 0;
     if (t >= start && t < end) {
-      focusMin += mins;
-      count++;
-      perDay[Math.floor((t - start) / DAY_MS)] += mins;
       if (s.subjId) perSubject[s.subjId] = (perSubject[s.subjId] || 0) + mins;
     } else if (t >= prevStart && t < start) {
       prevFocusMin += mins;
@@ -78,8 +91,7 @@ export function weeklyRecap(main = {}, weekStart = startOfWeek(), now = new Date
   // The planner writes `dateStr` as toISOString() of the LOCAL midnight of the
   // block's day (east of UTC that is the previous calendar date). Match it
   // with the very same computation instead of parsing it as a real date.
-  const weekDateStrs = new Set(Array.from({ length: 7 }, (_, i) =>
-    new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + i).toISOString().slice(0, 10)));
+  const weekDateStrs = new Set(weekDateStrings(weekStart));
   let blocksPlanned = 0;
   let blocksDone = 0;
   let hoursPlanned = 0;
@@ -121,6 +133,6 @@ export function weeklyRecap(main = {}, weekStart = startOfWeek(), now = new Date
     blocksPlanned, blocksDone, hoursPlanned, hoursDone,
     exams, reviewsDue,
     chaptersTotal, chaptersDone,
-    streak: Number(main.streak) || 0,
+    streak: currentStreak(main, now),
   };
 }

@@ -15,12 +15,35 @@ import { db } from '../firebase/config';
 import { useTranslation } from '../i18n';
 import { GuidedTour, useGuidedTour, TourButton } from '../components/GuidedTour';
 import { reportSaveError } from '../lib/notify';
+import { PAGE_MAX_W } from '../components/ui/scale';
 
 // ── Small helpers ────────────────────────────────────────────────────────────
 
 /** Average of a numeric array (0 when empty). */
 function average(arr) {
   return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+}
+
+/** Below this average over its RATED chapters, a subject needs work. */
+const WEAK_AVG = 3;
+
+/** The stars actually given on a subject; unrated chapters are not zeros. */
+function ratedValues(conf) {
+  return (Array.isArray(conf) ? conf : []).map(Number).filter(v => v > 0);
+}
+
+/** Whether the student has rated this subject at all. */
+function isRated(subject) {
+  return ratedValues(subject?.conf).length > 0;
+}
+
+/**
+ * The ONE definition of "needs work", shared by the header tile and the
+ * "weak" filter so the two can never report different numbers.
+ */
+function needsWork(subject) {
+  const rated = ratedValues(subject?.conf);
+  return rated.length > 0 && average(rated) < WEAK_AVG;
 }
 
 /** Whether the active theme is light (read once from the --bg-base CSS var). */
@@ -277,9 +300,8 @@ export default function PageConfidence({ user }) {
   const globalColor = globalAvg < 2 ? '#E74C3C' : globalAvg < 3.5 ? '#F1C40F' : '#27AE60';
 
   const filteredSubjects = subjects.filter(s => {
-    const avg = average(s.conf || []);
-    if (filter === 'weak')   return avg < 3;
-    if (filter === 'strong') return avg >= 3;
+    if (filter === 'weak')   return needsWork(s);
+    if (filter === 'strong') return isRated(s) && !needsWork(s);
     return true;
   });
 
@@ -287,9 +309,10 @@ export default function PageConfidence({ user }) {
 
   // Header stats / filter counts.
   const masteredCount = subjects.filter(s => { const a = s.conf || []; return a.length && average(a) >= 4; }).length;
-  const toWorkCount   = subjects.filter(s => (s.conf || []).some(c => c > 0 && c < 3)).length;
-  const weakFilterCount   = subjects.filter(s => { const a = s.conf || []; return a.length && average(a) < 3; }).length;
-  const strongFilterCount = subjects.filter(s => { const a = s.conf || []; return a.length && average(a) >= 3; }).length;
+  // Same predicate as the filter above — this is the count the filter shows.
+  const toWorkCount       = subjects.filter(needsWork).length;
+  const weakFilterCount   = toWorkCount;
+  const strongFilterCount = subjects.filter(s => isRated(s) && !needsWork(s)).length;
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '50vh' }}>
@@ -306,7 +329,7 @@ export default function PageConfidence({ user }) {
   );
 
   return (
-    <div style={{ maxWidth: 980, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ maxWidth: PAGE_MAX_W, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
       <TourButton onClick={tour.start} label={t('common.guidedTour')} />
 

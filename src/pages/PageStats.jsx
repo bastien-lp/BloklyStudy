@@ -30,6 +30,7 @@ import { reportSaveError } from '../lib/notify';
 import { resolveOwnPhoto } from '../lib/profilePhoto';
 import StatsOverview from '../components/StatsOverview';
 import PresenceCard from '../components/PresenceCard';
+import { PAGE_MAX_W } from '../components/ui/scale';
 
 
 
@@ -409,7 +410,7 @@ function BadgesSection({ earnedBadges = [] }) {
               <div style={{ fontSize: '1.4rem', marginBottom: 4 }}>{isEarned ? b.ico : '🔒'}</div>
               <div style={{ fontSize: '.58rem', color: isEarned ? 'var(--text-primary)' : 'var(--text-muted)',
                 fontWeight: isEarned ? 600 : 400, lineHeight: 1.2 }}>{t('badges.' + b.id + '_name')}</div>
-              {b.xp && isEarned && <div style={{ fontSize: '.52rem', color: 'var(--xp-color)', marginTop: 2 }}>+{b.xp} XP</div>}
+              {b.xp > 0 && isEarned && <div style={{ fontSize: '.52rem', color: 'var(--xp-color)', marginTop: 2 }}>+{b.xp} XP</div>}
             </motion.div>
           );
         })}
@@ -438,7 +439,7 @@ function BadgesSection({ earnedBadges = [] }) {
                 <div style={{ fontSize: '3.5rem', marginBottom: 12 }}>{earnedSet.has(active) ? activeBadge.ico : '🔒'}</div>
                 <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: 8 }}>{t('badges.' + activeBadge.id + '_name')}</div>
                 <div style={{ fontSize: '.82rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 12 }}>{t('badges.' + activeBadge.id + '_desc')}</div>
-                {activeBadge.xp && earnedSet.has(active) && (
+                {activeBadge.xp > 0 && earnedSet.has(active) && (
                   <div style={{ padding: '6px 16px', borderRadius: 10, background: 'var(--accent-subtle)',
                     border: '1px solid var(--accent)', display: 'inline-block',
                     color: 'var(--xp-color)', fontWeight: 700, fontSize: '.82rem' }}>
@@ -491,7 +492,7 @@ export default function PageStats({ user, onOpenConv }) {
   const { earnedBadges = [] } = data;
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ maxWidth: PAGE_MAX_W, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       <TourButton onClick={tour.start} label={t('common.guidedTour')} />
 

@@ -47,6 +47,7 @@ const YEARS = [
 ];
 
 import { HOUSE_VISIBILITY, DEFAULT_HOUSE_VISIBILITY } from '../lib/houseVisit';
+import { PAGE_MAX_W } from '../components/ui/scale';
 
 const DEFAULT_PRIVACY = {
   public: true, stats: true, badges: true, leaderboard: true, online: true,
@@ -283,7 +284,7 @@ export default function PageProfile({ user, onOpenConv }) {
   );
 
   return (
-    <div style={{ maxWidth: 700, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ maxWidth: PAGE_MAX_W, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
       {/* ── Header ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '1.4rem',
@@ -299,7 +300,7 @@ export default function PageProfile({ user, onOpenConv }) {
           <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: .95 }}
             onClick={() => fileRef.current?.click()} disabled={uploading}
             style={{ position: 'absolute', bottom: 0, right: 0, width: 22, height: 22, borderRadius: '50%',
-              border: '2px solid var(--bg-base)', background: 'var(--accent)', color: '#fff',
+              border: '2px solid var(--bg-base)', background: 'var(--accent)', color: 'var(--bg-base)',
               fontSize: '.65rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {uploading ? '…' : '📷'}
           </motion.button>
@@ -469,7 +470,7 @@ export default function PageProfile({ user, onOpenConv }) {
                   onKeyDown={e => e.key === 'Enter' && searchFriend()}
                   placeholder={t('profile.exactPseudo')} style={{ ...inp, flex: 1 }} />
                 <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: .97 }} onClick={searchFriend} disabled={searching}
-                  style={{ padding: '8px 16px', borderRadius: 9, border: 'none', background: 'var(--accent)', color: '#fff', fontWeight: 600, fontSize: '.82rem', cursor: 'pointer', flexShrink: 0 }}>
+                  style={{ padding: '8px 16px', borderRadius: 9, border: 'none', background: 'var(--accent)', color: 'var(--bg-base)', fontWeight: 600, fontSize: '.82rem', cursor: 'pointer', flexShrink: 0 }}>
                   {searching ? '…' : t('profile.searchBtn')}
                 </motion.button>
               </div>
@@ -489,7 +490,7 @@ export default function PageProfile({ user, onOpenConv }) {
                     ) : (
                       <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: .95 }}
                         onClick={() => sendRequest(searchResult.uid, searchResult.pseudo)}
-                        style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: '.75rem', fontWeight: 700, cursor: 'pointer' }}>
+                        style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'var(--bg-base)', fontSize: '.75rem', fontWeight: 700, cursor: 'pointer' }}>
                         + {t('profile.add')}
                       </motion.button>
                     )}

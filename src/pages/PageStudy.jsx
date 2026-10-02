@@ -35,6 +35,7 @@ import { AMBIENCES, NEEDS_HEADPHONES, createAmbience } from '../lib/ambience';
 import {
   VolumeX, CloudRain, Waves, Flame, Trees, Droplets, Moon, Coffee, Brain, Headphones,
 } from 'lucide-react';
+import { PAGE_MAX_W } from '../components/ui/scale';
 
 /** Maps an ambience's `icon` name to its lucide component. */
 const AMBIENCE_ICONS = { VolumeX, CloudRain, Waves, Flame, Trees, Droplets, Moon, Coffee, Brain };
@@ -101,6 +102,27 @@ function pendingBlocksForToday(blocks, subjId, todayStr) {
     String(b.subj) === String(subjId) &&
     blockDateStr(b) === todayStr
   );
+}
+
+/**
+ * Length in seconds of the period the timer should run, from the mode and — for
+ * Pomodoro — the current phase.
+ *
+ * THE one place this is computed. It used to be worked out twice: the engine
+ * took the phase into account, the "configuration changed" effect did not. So
+ * when a 25-minute work phase ended and flipped to the break, the effect never
+ * recomputed the length (the phase was not even in its dependencies) and the
+ * timer was left sitting at zero seconds — see the re-arm in beginInterval.
+ */
+function periodSeconds({ mode, pomoPhase, duration, customDur }) {
+  if (mode === 'pomodoro')   return pomoPhase === 'work' ? 25 * 60 : 5 * 60;
+  if (mode === 'pomodoro50') return pomoPhase === 'work' ? 50 * 60 : 10 * 60;
+  return (duration === 'custom' ? customDur : duration) * 60;
+}
+
+/** Whether a mode runs in work/break phases. */
+function isPomodoro(mode) {
+  return mode === 'pomodoro' || mode === 'pomodoro50';
 }
 
 // Mode and option definitions. Labels are i18n keys, resolved at render time.
@@ -216,15 +238,14 @@ export default function PageStudy({ user, prefs }) {
     return unsub;
   }, [user]);
 
-  // Recompute the timer length when the mode/duration changes (while stopped).
+  // Recompute the timer length when the mode/duration/phase changes (while
+  // stopped). The Pomodoro phase belongs in here: without it, a finished phase
+  // kept the previous phase's length and a zeroed countdown.
   useEffect(() => {
     if (running) return;
-    let total;
-    if (mode === 'pomodoro') total = 25 * 60;
-    else if (mode === 'pomodoro50') total = 50 * 60;
-    else total = (duration === 'custom' ? customDur : duration) * 60;
+    const total = periodSeconds({ mode, pomoPhase, duration, customDur });
     setTotalTime(total); setTimeLeft(total); setElapsed(0); elapsedRef.current = 0;
-  }, [mode, duration, customDur]);
+  }, [mode, duration, customDur, pomoPhase]);
 
   // Start/stop the ambient sound with the timer.
   useEffect(() => {
@@ -239,15 +260,37 @@ export default function PageStudy({ user, prefs }) {
   }, [volume]);
 
   function getTotal() {
-    if (mode === 'pomodoro') return pomoPhase === 'work' ? 25 * 60 : 5 * 60;
-    if (mode === 'pomodoro50') return pomoPhase === 'work' ? 50 * 60 : 10 * 60;
-    return (duration === 'custom' ? customDur : duration) * 60;
+    return periodSeconds({ mode, pomoPhase, duration, customDur });
   }
 
   function flashXP(xp) {
     setXpEarned(xp);
     setShowXP(true);
     setTimeout(() => setShowXP(false), 3000);
+  }
+
+  /**
+   * Credit the seconds focused so far, and CONSUME them.
+   *
+   * This is the XP invariant of the page: the counter is zeroed synchronously,
+   * before the (async) write, so no path can ever credit the same seconds
+   * twice. The end of a period used to bank without resetting it, so one real
+   * 25-minute phase could be cashed in again and again.
+   *
+   * Under a minute nothing is credited (computeXP returns 0) and the seconds are
+   * KEPT: pausing at 59 s and resuming must not throw that time away.
+   *
+   * @returns {boolean} whether XP was credited
+   */
+  function bankElapsed(sessSubj = subjId) {
+    const secs = elapsedRef.current;
+    const xp = computeXP(secs);
+    if (xp <= 0) return false;
+    elapsedRef.current = 0;
+    setElapsed(0);
+    flashXP(xp);
+    saveSession(secs, xp, sessSubj);
+    return true;
   }
 
   // Set up the ticking interval, wake lock and ambient sound for the CURRENT
@@ -266,16 +309,23 @@ export default function PageStudy({ user, prefs }) {
         totalTime, elapsed: elapsedRef.current, running: true, ts: Date.now() });
       setTimeLeft(tl => {
         if (tl <= 1) {
-          // Timer reached zero: stop, chime, bank XP, flip Pomodoro phase.
+          // Period over: stop, chime, bank what was focused, then ARM THE NEXT
+          // PERIOD. Leaving the countdown at zero was the other half of the
+          // unlimited-XP bug: pressing Play again hit this branch on the very
+          // first tick, which both skipped the phase and cashed the previous
+          // phase's seconds in a second time.
           clearInterval(intervalRef.current); setRunning(false);
           if (soundRef.current) { soundRef.current.stop(); soundRef.current = null; }
           releaseWakeLock();
           playChime(volume > 0 ? Math.max(volume, 0.4) : 0.6);
-          const xp = computeXP(elapsedRef.current);
-          if (xp > 0) { flashXP(xp); saveSession(elapsedRef.current, xp); offerBlocks(); }
+          if (bankElapsed()) offerBlocks();
           setDraft(null);
-          if (mode === 'pomodoro' || mode === 'pomodoro50') { setPomoPhase(ph => ph === 'work' ? 'break' : 'work'); setPomoCycle(c => c + 1); }
-          return 0;
+
+          const nextPhase = isPomodoro(mode) ? (pomoPhase === 'work' ? 'break' : 'work') : pomoPhase;
+          if (isPomodoro(mode)) { setPomoPhase(nextPhase); setPomoCycle(c => c + 1); }
+          const nextTotal = periodSeconds({ mode, pomoPhase: nextPhase, duration, customDur });
+          setTotalTime(nextTotal);
+          return nextTotal;
         }
         return tl - 1;
       });
@@ -289,10 +339,19 @@ export default function PageStudy({ user, prefs }) {
       clearInterval(intervalRef.current); setRunning(false);
       if (soundRef.current) { soundRef.current.stop(); soundRef.current = null; }
       releaseWakeLock();
-      const xp = computeXP(elapsedRef.current);
-      if (xp > 0) { flashXP(xp); saveSession(elapsedRef.current, xp); offerBlocks(); elapsedRef.current = 0; setElapsed(0); }
+      if (bankElapsed()) offerBlocks();
       setDraft(null);
     } else {
+      // Starting from an exhausted countdown re-arms a full period instead of
+      // running one tick and "finishing" it. Belt and braces: even if some
+      // future change leaves timeLeft at zero again, Play cannot farm XP.
+      if (timeLeft <= 0) {
+        const total = getTotal();
+        setTotalTime(total);
+        setTimeLeft(total);
+        elapsedRef.current = 0;
+        setElapsed(0);
+      }
       setRunning(true);
       beginInterval();
     }
@@ -343,8 +402,12 @@ export default function PageStudy({ user, prefs }) {
   // Declared after the engine functions it calls so it references them safely.
   useEffect(() => {
     if (resumed && resumed.timeLeft <= 0) {
-      const xp = computeXP(resumed.totalTime);
-      if (xp > 0) saveSession(resumed.totalTime, xp, resumed.subjId);
+      // The period ran out while the tab was away. Credit the PERIOD, not the
+      // wall-clock gap: liveElapsed keeps growing while PageStudy is unmounted,
+      // so an hour spent on another tab must never pay for an hour of focus.
+      const secs = Math.min(resumed.elapsed || 0, resumed.totalTime || 0);
+      const xp = computeXP(secs);
+      if (xp > 0) saveSession(secs, xp, resumed.subjId);
       setDraft(null);
     } else if (liveResume) {
       beginInterval();
@@ -366,7 +429,7 @@ export default function PageStudy({ user, prefs }) {
   );
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto', fontFamily: 'var(--font-family)' }}>
+    <div style={{ maxWidth: PAGE_MAX_W, margin: '0 auto', fontFamily: 'var(--font-family)' }}>
 
       {/* XP toast */}
       <AnimatePresence>
@@ -402,7 +465,7 @@ export default function PageStudy({ user, prefs }) {
                 <motion.button key={b.id} whileHover={{ scale: 1.03 }} whileTap={{ scale: .97 }}
                   onClick={() => markBlockDone(b.id)}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 10,
-                    border: 'none', background: 'var(--success)', color: '#fff', fontSize: '.74rem', fontWeight: 700, cursor: 'pointer' }}>
+                    border: 'none', background: 'var(--success)', color: 'var(--bg-base)', fontSize: '.74rem', fontWeight: 700, cursor: 'pointer' }}>
                   ✓ {fmtHour(b.hour)} · {t('study.blockMarkDone')}
                 </motion.button>
               ))}

@@ -25,6 +25,7 @@ import {
 import { useTranslation } from '../i18n';
 import { GuidedTour, useGuidedTour, TourButton } from '../components/GuidedTour';
 import { reportSaveError } from '../lib/notify';
+import { PAGE_MAX_W } from '../components/ui/scale';
 
 // Contact categories. `labelKey` resolves to a localized label; `id` is the
 // stored value (stable).
@@ -225,7 +226,7 @@ export default function PageWhoarewe({ user }) {
     : t('whoarewe.msgPlaceholderSuggestion');
 
   return (
-    <div style={{ maxWidth: 860, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20, fontFamily: 'var(--font-family)' }}>
+    <div style={{ maxWidth: PAGE_MAX_W, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20, fontFamily: 'var(--font-family)' }}>
 
       <TourButton onClick={tour.start} label={t('common.guidedTour')} />
 

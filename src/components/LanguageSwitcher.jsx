@@ -45,7 +45,8 @@ export default function LanguageSwitcher({ lang, onChange, variant = 'app' }) {
 
   return (
     <div ref={rootRef} style={{ position: 'relative', flexShrink: 0 }}>
-      <button type="button"
+      {/* The class carries the mobile touch target only (src/index.css). */}
+      <button type="button" className="lang-switch"
         onClick={() => setOpen(o => !o)}
         aria-haspopup="listbox"
         aria-expanded={open}

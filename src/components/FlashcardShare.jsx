@@ -47,7 +47,7 @@ const field = {
 
 const primaryBtn = {
   padding: '11px', borderRadius: 11, border: 'none', cursor: 'pointer',
-  background: 'var(--accent)', color: '#fff', fontWeight: 700, fontSize: '.83rem',
+  background: 'var(--accent)', color: 'var(--bg-base)', fontWeight: 700, fontSize: '.83rem',
   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
 };
 

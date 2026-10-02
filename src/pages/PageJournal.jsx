@@ -31,6 +31,7 @@ import { GuidedTour, useGuidedTour, TourButton } from '../components/GuidedTour'
 import { EmptyState } from '../components/ui';
 import { reportSaveError } from '../lib/notify';
 import { dayKey } from '../lib/dayKeys';
+import { PAGE_MAX_W } from '../components/ui/scale';
 
 // ── Moods ───────────────────────────────────────────────────────────────────
 // `emoji` is the persisted value; labels are i18n keys resolved at render time.
@@ -269,7 +270,7 @@ function JournalEntry({ entry, index, onDelete, onSave }) {
                 borderRadius: 20, border: 'none', fontSize: '.72rem', fontWeight: 700,
                 cursor: draft.trim() ? 'pointer' : 'not-allowed',
                 opacity: draft.trim() ? 1 : .5,
-                background: 'var(--accent)', color: '#fff' }}>
+                background: 'var(--accent)', color: 'var(--bg-base)' }}>
               <Check size={13} strokeWidth={2.6} />{t('journal.saveEdit')}
             </button>
             <button onClick={() => setEditing(false)}
@@ -435,7 +436,7 @@ export default function PageJournal({ user }) {
   }
 
   return (
-    <div style={{ maxWidth: 800, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 18,
+    <div style={{ maxWidth: PAGE_MAX_W, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 18,
       fontFamily: 'var(--font-family)' }}>
 
       <TourButton onClick={tour.start} label={t('common.guidedTour')} />
@@ -557,8 +558,8 @@ export default function PageJournal({ user }) {
                   title={t(m.labelKey)}
                   style={{ width: 38, height: 38, borderRadius: 11, border: 'none', cursor: 'pointer',
                     fontSize: '1.1rem', lineHeight: 1,
-                    background: active ? `${m.color}26` : 'var(--bg-card-hover)',
-                    boxShadow: active ? `inset 0 0 0 2px ${m.color}` : 'none',
+                    background: active ? 'var(--accent-subtle)' : 'var(--bg-card-hover)',
+                    boxShadow: active ? 'inset 0 0 0 2px var(--accent)' : 'none',
                     transition: 'background .15s, box-shadow .15s' }}>
                   {m.emoji}
                 </motion.button>

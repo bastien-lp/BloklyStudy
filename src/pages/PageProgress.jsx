@@ -21,14 +21,23 @@ import { db } from '../firebase/config';
 import { GuidedTour, useGuidedTour, TourButton } from '../components/GuidedTour';
 import { useTranslation } from '../i18n';
 import { subjectReadiness, readinessBand } from '../data/readiness';
+import { subjectCounts, bumpSubject, bumpChapter, askMode } from '../data/revTracker';
+import { startOfWeek, weekDateStrings } from '../lib/weeklyRecap';
+import { shortDayName } from '../lib/dayNames';
 import { reportSaveError } from '../lib/notify';
+import { Repeat, ChevronDown, Plus, Minus } from 'lucide-react';
+import { PAGE_MAX_W } from '../components/ui/scale';
 
 // ── Pure helpers ─────────────────────────────────────────────────────────────
 
-/** Hours (e.g. 9.5) → "9h30". */
+/**
+ * Clock time from a fractional hour: 9 → "9h", 9.5 → "9h30".
+ * Same shape as the planner's own formatter, so an agenda row and the block it
+ * points at read alike.
+ */
 function hm(h) {
   const hh = Math.floor(h), mm = String(Math.round((h % 1) * 60)).padStart(2, '0');
-  return `${hh}h${mm}`;
+  return mm === '00' ? `${hh}h` : `${hh}h${mm}`;
 }
 
 /** Resolve a block's ISO date (from explicit dateStr or week/day offsets). */
@@ -44,10 +53,17 @@ function daysUntil(dateStr) {
   return Math.ceil((new Date(dateStr) - today) / 86400000);
 }
 
+/** Hours elapsed in the current day, e.g. 14.5 at 14:30. */
+function hoursIntoDay() {
+  const d = new Date();
+  return d.getHours() + d.getMinutes() / 60;
+}
+
 /** Localized short weekday name for a Monday-based index (0=Mon … 6=Sun). */
 function dayShort(formatDate, i) {
-  // 2024-01-01 is a Monday → +i gives the right weekday.
-  return formatDate(new Date(2024, 0, 1 + i), { weekday: 'short' });
+  // Shared with the planner (lib/dayNames) so the same day is not spelled
+  // "Lun" on one page and "lun." on the next.
+  return shortDayName(formatDate, i);
 }
 /** Motivation message (i18n key + emoji) for a completion percentage. */
 function getMotivation(pct) {
@@ -284,6 +300,166 @@ function ReadinessSection({ subjects, srData }) {
   );
 }
 
+// ── Revision counters: −/+ around a number ──────────────────────────────────
+// Used twice: once per subject (md) and once per chapter (sm). The minus is
+// disabled at zero rather than hidden, so the row never changes width.
+function CounterStepper({ value, size = 'md', onBump, disabled }) {
+  const { t } = useTranslation();
+  const dim = size === 'sm' ? 20 : 26;
+  const font = size === 'sm' ? '.7rem' : '.9rem';
+  const width = size === 'sm' ? 18 : 24;
+
+  const btn = (delta, label) => (
+    <motion.button whileTap={{ scale: .85 }} onClick={() => onBump(delta)}
+      disabled={disabled || (delta < 0 && value <= 0)}
+      aria-label={label} title={label}
+      style={{ width: dim, height: dim, flexShrink: 0, display: 'flex', alignItems: 'center',
+        justifyContent: 'center', borderRadius: 7, background: 'var(--bg-card-hover)',
+        border: '1px solid var(--border)', color: 'var(--text-secondary)',
+        cursor: delta < 0 && value <= 0 ? 'default' : 'pointer',
+        opacity: disabled || (delta < 0 && value <= 0) ? .35 : 1 }}>
+      {delta < 0 ? <Minus size={size === 'sm' ? 10 : 13} strokeWidth={2.6} />
+                 : <Plus size={size === 'sm' ? 10 : 13} strokeWidth={2.6} />}
+    </motion.button>
+  );
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+      {btn(-1, t('revTracker.decrease'))}
+      {/* The number stays on the theme ink: a pale subject colour (yellow,
+          mint) disappears on a light theme. The dot carries the identity. */}
+      <span title={t('revTracker.passes', { count: value })}
+        style={{ minWidth: width, textAlign: 'center', fontSize: font, fontWeight: 800,
+          color: value ? 'var(--text-primary)' : 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+        {value}
+      </span>
+      {btn(1, t('revTracker.increase'))}
+    </div>
+  );
+}
+
+// ── Revision tracker (a manual tally, see src/data/revTracker.js) ────────────
+// One counter per subject, one per chapter, all moved by hand. Nothing here is
+// derived from the planner, the timer or the spaced-repetition schedule — the
+// only assisted path is the opt-in prompt after a spaced review, whose setting
+// (`main.revAskAfterReview`) is edited at the bottom of this section.
+function RevTrackerSection({ subjects, revCounts, ask, onBumpSubject, onBumpChapter, onSetAsk }) {
+  const { t } = useTranslation();
+  const [openId, setOpenId] = useState(null);
+
+  if (!subjects.length) {
+    return (
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: '1.2rem' }}>
+        <div style={{ fontSize: '.9rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>{t('revTracker.title')}</div>
+        <div style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>{t('revTracker.noSubjects')}</div>
+      </div>
+    );
+  }
+
+  const chapterLabel = i => t('app.chapterDefault', { count: i + 1 });
+  const rows = subjects.map(s => ({ s, c: subjectCounts(s, revCounts, chapterLabel) }));
+  const askOptions = [
+    { v: 'always', l: t('revTracker.askAlways') },
+    { v: 'ask',    l: t('revTracker.askAsk') },
+    { v: 'never',  l: t('revTracker.askNever') },
+  ];
+
+  return (
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)',
+      borderRadius: 16, padding: 'clamp(.9rem,3vw,1.4rem)' }}>
+
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: '.9rem', fontWeight: 700, color: 'var(--text-primary)',
+          display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Repeat size={15} strokeWidth={2} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+          {t('revTracker.title')}
+        </div>
+        <div style={{ fontSize: '.68rem', color: 'var(--text-muted)', marginTop: 2 }}>{t('revTracker.subtitle')}</div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {rows.map(({ s, c }, i) => {
+          const open = openId === s.id;
+          const color = s.color || 'var(--accent)';
+          return (
+            <motion.div key={s.id}
+              initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }}>
+
+              {/* Subject row: the label expands the chapters, the stepper stays
+                  outside that button so the two never fight for the same tap. */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px',
+                borderRadius: 10, background: open ? 'var(--bg-card-hover)' : 'transparent' }}>
+                <button onClick={() => setOpenId(open ? null : s.id)} aria-expanded={open}
+                  style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 9,
+                    padding: 0, background: 'none', border: 'none', cursor: 'pointer',
+                    textAlign: 'left', fontFamily: 'inherit' }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: '.8rem', fontWeight: 600, color: 'var(--text-primary)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                    {c.chaptersTotal > 0 && (
+                      <span style={{ display: 'block', fontSize: '.62rem', color: 'var(--text-muted)', marginTop: 1 }}>
+                        {t('revTracker.chapterTally', { count: c.chaptersTotal })}
+                      </span>
+                    )}
+                  </span>
+                  <ChevronDown size={14} strokeWidth={2} style={{ color: 'var(--text-muted)', flexShrink: 0,
+                    transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s ease' }} />
+                </button>
+                <CounterStepper value={c.n} onBump={d => onBumpSubject(s.id, d)} />
+              </div>
+
+              {/* One small counter per chapter */}
+              <AnimatePresence initial={false}>
+                {open && (
+                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }} transition={{ duration: .22, ease: 'easeOut' }}
+                    style={{ overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, padding: '4px 8px 10px 25px' }}>
+                      {c.chapters.length === 0 ? (
+                        <div style={{ fontSize: '.66rem', color: 'var(--text-muted)' }}>{t('revTracker.noChapters')}</div>
+                      ) : c.chapters.map(ch => (
+                        <div key={ch.index} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ flex: 1, minWidth: 0, fontSize: '.7rem', color: 'var(--text-secondary)',
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.name}</span>
+                          <CounterStepper value={ch.count} size="sm"
+                            onBump={d => onBumpChapter(s.id, ch.index, d)} />
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {/* Footer: what the tracker is, and — deliberately quiet, on the same
+          line — what a finished spaced review should do to these counters. */}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, flexWrap: 'wrap', marginTop: 10,
+        fontSize: '.62rem', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+        <span>{t('revTracker.legend')}</span>
+        <span aria-hidden="true" style={{ opacity: .45 }}>·</span>
+        <label style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4 }}>
+          {t('revTracker.askLabel')}
+          <select value={ask} onChange={e => onSetAsk(e.target.value)}
+            style={{ background: 'transparent', border: 'none', borderBottom: '1px dotted var(--border-strong)',
+              color: 'var(--text-secondary)', fontFamily: 'inherit', fontSize: '.62rem', fontWeight: 600,
+              padding: '0 2px 1px', cursor: 'pointer' }}>
+            {askOptions.map(o => (
+              /* The option list is drawn by the OS, so it needs explicit
+                 colours rather than the transparent select background. */
+              <option key={o.v} value={o.v}
+                style={{ background: 'var(--bg-modal)', color: 'var(--text-primary)' }}>{o.l}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+    </div>
+  );
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 export default function PageProgress({ user, onTuto }) {
   const { t } = useTranslation();
@@ -291,6 +467,8 @@ export default function PageProgress({ user, onTuto }) {
   const [subjects, setSubjects] = useState([]);
   const [blocks, setBlocks]     = useState([]);
   const [srData, setSrData]     = useState({}); // read-only, feeds the readiness score
+  const [revCounts, setRevCounts] = useState({});   // manual revision counters
+  const [ask, setAsk] = useState('ask');                // what a finished spaced review does
   const [loading, setLoading]   = useState(true);
 
   useEffect(() => {
@@ -301,11 +479,33 @@ export default function PageProgress({ user, onTuto }) {
         setSubjects(d.subjects || []);
         setBlocks(d.blocks || []);
         setSrData(d.srData || {});
+        setRevCounts(d.revCounts || {});
+        setAsk(askMode(d.revAskAfterReview));
       }
       setLoading(false);
     });
     return unsub;
   }, [user]);
+
+  // The manual counters. Optimistic, like toggleBlock below: the snapshot
+  // confirms a moment later. A bump that would change nothing (going below
+  // zero) returns null and is not written at all.
+  async function saveCounts(next) {
+    if (!next) return;
+    setRevCounts(next);
+    try { await updateDoc(doc(db, 'users', user.uid, 'data', 'main'), { revCounts: next }); }
+    catch (e) { reportSaveError(e, 'Progress — revision counter'); }
+  }
+
+  const bumpSubjectCount = (subjectId, delta) => saveCounts(bumpSubject(revCounts, subjectId, delta));
+  const bumpChapterCount = (subjectId, index, delta) => saveCounts(bumpChapter(revCounts, subjectId, index, delta));
+
+  // Whether finishing a spaced review offers to add +1 to that chapter.
+  async function saveAsk(mode) {
+    setAsk(mode);
+    try { await updateDoc(doc(db, 'users', user.uid, 'data', 'main'), { revAskAfterReview: mode }); }
+    catch (e) { reportSaveError(e, 'Progress — review prompt setting'); }
+  }
 
   async function toggleBlock(id) {
     const updated = blocks.map(b => b.id === id ? { ...b, status: b.status === 'done' ? 'todo' : 'done' } : b);
@@ -328,11 +528,29 @@ export default function PageProgress({ user, onTuto }) {
     .filter(b => b.type === 'rev' && b.status === 'todo')
     .sort((a, b) => blockDateStr(a).localeCompare(blockDateStr(b)) || a.hour - b.hour);
 
-  const weekBlocks = blocks.filter(b => b.type === 'rev' && daysUntil(blockDateStr(b)) <= 7 && daysUntil(blockDateStr(b)) >= 0);
+  // The calendar week, Monday 00:00 → Sunday 23:59 local, shared with the
+  // Stats recap (lib/weeklyRecap) so both pages count the same blocks.
+  const weekStrs   = new Set(weekDateStrings(startOfWeek()));
+  const weekBlocks = blocks.filter(b => b.type === 'rev' && weekStrs.has(blockDateStr(b)));
   const weekDone   = weekBlocks.filter(b => b.status === 'done').length;
-  const nextBlock  = agenda[0];
-  const nextDl     = nextBlock ? daysUntil(blockDateStr(nextBlock)) : null;
 
+  // "Next block" is the next one in the FUTURE: the first still to do that has
+  // not started yet. Anything earlier is late, not next, and a countdown built
+  // from it was negative.
+  const nowH = hoursIntoDay();
+  const nextBlock = agenda.find(b => {
+    const dl = daysUntil(blockDateStr(b));
+    if (dl !== 0) return dl > 0;
+    return (b.hour || 0) + (b.dur || 1) > nowH; // today and not over yet
+  });
+  // Clamped as a belt and braces: the label must never be able to show 'J-' + a
+  // negative number again.
+  const nextDl = nextBlock ? Math.max(0, daysUntil(blockDateStr(nextBlock))) : null;
+
+  // Every bucket of the agenda, overdue INCLUDED: without it, blocks whose day
+  // has passed belonged to no group, so the list rendered empty while its badge
+  // still counted them.
+  const agendaOverdue  = agenda.filter(b => daysUntil(blockDateStr(b)) < 0);
   const agendaToday    = agenda.filter(b => daysUntil(blockDateStr(b)) === 0);
   const agendaTomorrow = agenda.filter(b => daysUntil(blockDateStr(b)) === 1);
   const agendaWeek     = agenda.filter(b => { const dl = daysUntil(blockDateStr(b)); return dl > 1 && dl <= 7; });
@@ -346,7 +564,7 @@ export default function PageProgress({ user, onTuto }) {
   );
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ maxWidth: PAGE_MAX_W, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
       {onTuto && (
         <TourButton onClick={tour.start} label={t('common.guidedTour')} />
       )}
@@ -402,6 +620,10 @@ export default function PageProgress({ user, onTuto }) {
       {/* ── 1b. Readiness by subject (derived preparation score) ── */}
       <ReadinessSection subjects={subjects} srData={srData} />
 
+      {/* ── 1c. Revision tracker (how many times each subject was revised) ── */}
+      <RevTrackerSection subjects={subjects} revCounts={revCounts} ask={ask}
+        onBumpSubject={bumpSubjectCount} onBumpChapter={bumpChapterCount} onSetAsk={saveAsk} />
+
       {/* ── 2. Week + distribution ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 14 }}>
 
@@ -445,6 +667,7 @@ export default function PageProgress({ user, onTuto }) {
             </div>
           ) : (
             <div style={{ maxHeight: 420, overflowY: 'auto', scrollbarWidth: 'none' }}>
+              <AgendaSection title={t('progress.overdue')}  color="var(--danger)" items={agendaOverdue} subjects={subjects} onToggle={toggleBlock} />
               <AgendaSection title={t('common.today')}      color="#E74C3C" items={agendaToday}    subjects={subjects} onToggle={toggleBlock} />
               <AgendaSection title={t('common.tomorrow')}   color="#F1C40F" items={agendaTomorrow} subjects={subjects} onToggle={toggleBlock} />
               <AgendaSection title={t('progress.thisWeek')} color="var(--accent)" items={agendaWeek} subjects={subjects} onToggle={toggleBlock} />

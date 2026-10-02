@@ -65,7 +65,7 @@ export function MaintenanceScreen({ message, onHome }) {
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 7,
               padding: '9px 20px', borderRadius: 20, border: 'none', cursor: 'pointer',
-              background: 'var(--accent)', color: '#fff', fontSize: '.82rem', fontWeight: 700,
+              background: 'var(--accent)', color: 'var(--bg-base)', fontSize: '.82rem', fontWeight: 700,
             }}>
             <RefreshCw size={14} strokeWidth={2.4} />
             {t('system.maintenanceRetry')}

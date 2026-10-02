@@ -90,3 +90,23 @@ nav, [class*="nav"], [class*="sidebar"], [class*="panel"] { opacity: var(--block
     scroll-behavior: auto !important;
   }
 }
+
+/* ── FLOATING DOCK ─────────────────────────────────────────────────────────
+   The dock floats over the page: a 56 px button inside 8 px of padding,
+   sitting 20 px off the bottom. Named here so the main column and the
+   planner grids — which scroll inside themselves — can all reserve the same
+   room underneath their content instead of ending up behind it. */
+:root { --dock-h: 92px; }
+
+/* ── TOUCH TARGETS ─────────────────────────────────────────────────────────
+   The chrome is sized for a mouse: the tab buttons came out 27 px tall, and
+   the language switcher and the banner close were smaller still. Below the
+   phone breakpoint they grow to the ~44 px a thumb needs. The banner also
+   loses some padding there: header + nav + banner were eating a quarter of
+   the screen before the page even started. */
+@media (max-width: 680px) {
+  .app-tab { min-height: 44px; padding-left: 12px !important; padding-right: 12px !important; }
+  .lang-switch { min-height: 40px; min-width: 44px; justify-content: center; }
+  .banner-close { min-height: 40px; min-width: 40px; }
+  .system-banner { padding: 6px 10px !important; font-size: .72rem; }
+}

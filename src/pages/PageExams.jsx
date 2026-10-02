@@ -20,6 +20,7 @@ import { db } from '../firebase/config';
 import { useTranslation } from '../i18n';
 import { GuidedTour, useGuidedTour, TourButton } from '../components/GuidedTour';
 import { reportSaveError, reportError } from '../lib/notify';
+import { PAGE_MAX_W } from '../components/ui/scale';
 
 // ── Pure helpers ─────────────────────────────────────────────────────────────
 function daysUntil(dateStr) {
@@ -240,7 +241,7 @@ function GradeRow({ subject, onUpdate, onSave, index, simMode }) {
         {note !== null
           ? <div style={{ padding: '3px 10px', borderRadius: 20, background: noteBg, border: `1px solid ${noteColor}44` }}>
               <span style={{ fontSize: '.9rem', fontWeight: 800, color: noteColor }}>{note.toFixed(1)}</span>
-              <span style={{ fontSize: '.58rem', color: 'rgba(255,255,255,.3)', marginLeft: 2 }}>/20</span>
+              <span style={{ fontSize: '.58rem', color: 'var(--text-muted)', marginLeft: 2 }}>/20</span>
             </div>
           : <span style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>—</span>}
         <motion.span animate={{ rotate: expanded ? 180 : 0 }} style={{ fontSize: '.62rem', color: 'var(--text-muted)' }}>▼</motion.span>
@@ -320,7 +321,7 @@ function GradeRow({ subject, onUpdate, onSave, index, simMode }) {
                         {t('common.cancel')}
                       </button>
                       <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: .97 }} onClick={addEpreuve}
-                        style={{ flex: 2, padding: '7px', borderRadius: 7, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: '.78rem', fontWeight: 700, cursor: 'pointer' }}>
+                        style={{ flex: 2, padding: '7px', borderRadius: 7, border: 'none', background: 'var(--accent)', color: 'var(--bg-base)', fontSize: '.78rem', fontWeight: 700, cursor: 'pointer' }}>
                         + {t('exams.addTestBtn')}
                       </motion.button>
                     </div>
@@ -428,7 +429,7 @@ export default function PageExams({ user }) {
   );
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 28 }}>
+    <div style={{ maxWidth: PAGE_MAX_W, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 28 }}>
       <Confetti active={confetti} />
 
       <TourButton onClick={tour.start} label={t('common.guidedTour')} />
@@ -489,7 +490,7 @@ export default function PageExams({ user }) {
         {totalEcts > 0 && (
           <div style={{ flex: 1, padding: '1.1rem', borderRight: '1px solid var(--border)', textAlign: 'center' }}>
             <div style={{ fontSize: '2rem', fontWeight: 900, color: '#4A90D9', lineHeight: 1 }}>
-              {earnedEcts}<span style={{ fontSize: '1rem', color: 'rgba(255,255,255,.25)' }}>/{totalEcts}</span>
+              {earnedEcts}<span style={{ fontSize: '1rem', color: 'var(--text-placeholder)' }}>/{totalEcts}</span>
             </div>
             <div style={{ fontSize: '.62rem', color: 'var(--text-muted)', marginTop: 3 }}>{t('exams.ectsEarned')}</div>
           </div>
@@ -521,7 +522,7 @@ export default function PageExams({ user }) {
               exit={{ height: 0, opacity: 0 }} transition={{ duration: .25 }}
               style={{ overflow: 'hidden' }}>
               {withDate.length === 0
-                ? <div style={{ textAlign: 'center', padding: '2.5rem', color: 'rgba(255,255,255,.25)', fontSize: '.82rem', background: 'rgba(255,255,255,.02)', border: '1px dashed rgba(255,255,255,.07)', borderRadius: 14 }}>
+                ? <div style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)', fontSize: '.82rem', background: 'var(--bg-card)', border: '1px dashed var(--border)', borderRadius: 14 }}>
                     📭 {t('exams.noExams')}
                   </div>
                 : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(185px,1fr))', gap: 10 }}>

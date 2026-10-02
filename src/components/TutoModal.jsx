@@ -100,7 +100,7 @@ export function TutoModal({ page, onClose }) {
                 }}>
                   <div style={{
                     width: 24, height: 24, borderRadius: '50%',
-                    background: 'var(--accent)', color: '#fff',
+                    background: 'var(--accent)', color: 'var(--bg-base)',
                     fontSize: '.7rem', fontWeight: 800,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     flexShrink: 0, marginTop: 1,
@@ -148,7 +148,7 @@ export function TutoModal({ page, onClose }) {
               onClick={onClose}
               style={{
                 padding: '11px', borderRadius: 12, border: 'none',
-                background: 'var(--accent)', color: '#fff',
+                background: 'var(--accent)', color: 'var(--bg-base)',
                 fontSize: '.85rem', fontWeight: 700, cursor: 'pointer',
                 boxShadow: '0 4px 16px var(--accent-glow)',
               }}>

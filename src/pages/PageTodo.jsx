@@ -23,6 +23,7 @@ import { db } from '../firebase/config';
 import { useTranslation } from '../i18n';
 import { GuidedTour, useGuidedTour, TourButton } from '../components/GuidedTour';
 import { reportSaveError } from '../lib/notify';
+import { PAGE_MAX_W } from '../components/ui/scale';
 
 // Priority definitions. `labelKey` is resolved at render time.
 const P = {
@@ -493,7 +494,7 @@ export default function PageTodo({ user, onNavigate }) {
   ];
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20, fontFamily: 'var(--font-family)' }}>
+    <div style={{ maxWidth: PAGE_MAX_W, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20, fontFamily: 'var(--font-family)' }}>
 
       {/* ── Header ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
@@ -517,7 +518,7 @@ export default function PageTodo({ user, onNavigate }) {
           </select>
         </div>
         <motion.button onClick={() => setModal('add')} whileHover={{ scale: 1.04 }} whileTap={{ scale: .97 }}
-          style={{ padding: '9px 22px', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg,#4A90D9,#6366f1)', color: '#fff', fontSize: '.85rem', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 20px rgba(74,144,217,.35)' }}>
+          style={{ padding: '9px 22px', borderRadius: 12, border: 'none', background: 'var(--accent)', color: 'var(--bg-base)', fontSize: '.85rem', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 20px var(--accent-glow)' }}>
           + {t('todo.modalNew')}
         </motion.button>
       </div>
@@ -541,11 +542,11 @@ export default function PageTodo({ user, onNavigate }) {
           </div>
         )}
         <div style={{ textAlign: 'center', padding: '12px 8px', background: 'rgba(74,144,217,.08)', border: '1px solid rgba(74,144,217,.2)', borderRadius: 12 }}>
-          <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#4A90D9', lineHeight: 1 }}>{total > 0 ? Math.round(done / total * 100) : 0}%</div>
+          <div style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--accent)', lineHeight: 1 }}>{total > 0 ? Math.round(done / total * 100) : 0}%</div>
           <div style={{ fontSize: '.62rem', color: 'var(--text-muted)', marginTop: 3 }}>{t('todo.statComplete')}</div>
           {total > 0 && (
             <div style={{ marginTop: 6, height: 3, background: 'var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${Math.round(done / total * 100)}%`, background: '#4A90D9', borderRadius: 10, transition: 'width .8s ease' }} />
+              <div style={{ height: '100%', width: `${Math.round(done / total * 100)}%`, background: 'var(--accent)', borderRadius: 10, transition: 'width .8s ease' }} />
             </div>
           )}
         </div>

@@ -22,6 +22,7 @@ import {
 } from 'firebase/firestore';
 import { useTranslation } from '../i18n';
 import { GuidedTour, useGuidedTour, TourButton } from '../components/GuidedTour';
+import { PAGE_MAX_W } from '../components/ui/scale';
 import { reportSaveError, notify } from '../lib/notify';
 import { resolveOwnPhoto } from '../lib/profilePhoto';
 import {
@@ -108,6 +109,33 @@ function messagePreview(msg, t) {
   if (msg.type === 'flashcard') return `🃏 ${msg.question || t('groups.flashcard')}`;
   if (msg.type === 'link')      return `🔗 ${msg.title || msg.url || t('groups.link')}`;
   return msg.text || '';
+}
+
+/**
+ * One line for a conversation row, from the `lastMessage` stub a group or a
+ * private conversation stores: { uid, pseudo, text, type, sentAt }.
+ *
+ * It ALWAYS returns something. A stub whose text is empty — an attachment, a
+ * message removed since, a shape written by an older build — used to render as
+ * "You : " followed by nothing at all, which looked like a broken row.
+ *
+ * Note this takes the stub, not a full message: on a stub the human-readable
+ * label is in `text` (the document name, the quiz title), where
+ * `messagePreview` above would look for `doc.name` or `title`.
+ */
+function lastMessageLabel(last, t) {
+  const body = (last?.text || '').trim();
+  switch (last?.type) {
+    case 'poll':       return t('groups.pollPreview');
+    case 'focus':      return t('groups.focusPreview');
+    case 'sessionEnd': return t('groups.sessionEndedPreview');
+    case 'deck':       return t('groups.deckPreview');
+    case 'flashcard':  return t('groups.flashcardPreview');
+    case 'doc':        return body ? t('docs.bubblePreview', { name: body }) : t('groups.attachmentPreview');
+    case 'quiz':       return body ? t('quiz.bubblePreview', { title: body }) : t('groups.attachmentPreview');
+    case 'link':       return body ? `🔗 ${body}` : t('groups.attachmentPreview');
+    default:           return body || t('groups.attachmentPreview');
+  }
 }
 
 // Split text on @mentions of known member pseudos and render them highlighted.
@@ -476,7 +504,7 @@ function PollModal({ onSend, onClose }) {
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={onClose} style={{ flex: 1, padding: '9px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '.82rem' }}>{t('common.cancel')}</button>
           <button onClick={() => { if (question.trim() && options.filter(o => o.trim()).length >= 2) { onSend(question, options.filter(o => o.trim())); onClose(); } }}
-            style={{ flex: 2, padding: '9px', borderRadius: 10, border: 'none', background: 'var(--accent)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '.82rem' }}>
+            style={{ flex: 2, padding: '9px', borderRadius: 10, border: 'none', background: 'var(--accent)', color: 'var(--bg-base)', fontWeight: 700, cursor: 'pointer', fontSize: '.82rem' }}>
             📊 {t('groups.send')}
           </button>
         </div>
@@ -1396,7 +1424,7 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
         {unread > 0 && !isAtBottom.current && (
           <motion.button initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
             onClick={() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); setUnread(0); }}
-            style={{ position: 'absolute', bottom: 80, left: '50%', transform: 'translateX(-50%)', padding: '6px 16px', borderRadius: 20, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: '.75rem', fontWeight: 700, cursor: 'pointer', zIndex: 10 }}>
+            style={{ position: 'absolute', bottom: 80, left: '50%', transform: 'translateX(-50%)', padding: '6px 16px', borderRadius: 20, border: 'none', background: 'var(--accent)', color: 'var(--bg-base)', fontSize: '.75rem', fontWeight: 700, cursor: 'pointer', zIndex: 10 }}>
             {t('groups.newMessages', { count: unread })}
           </motion.button>
         )}
@@ -1608,7 +1636,7 @@ function FriendRow({ friend, user, online, preview, unread = 0, onOpen }) {
   let text = t('groups.startConv');
   if (preview) {
     const who = preview.uid === user.uid ? t('groups.you') : friend.pseudo;
-    text = `${who} : ${preview.text}`;
+    text = `${who} : ${lastMessageLabel(preview, t)}`;
   }
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
@@ -1817,16 +1845,12 @@ function GroupRow({ group, user, onOpen, unread = 0, session = null }) {
   const sessionPhase = session ? phaseAt(session).phase : 'done';
   const hasLiveSession = sessionPhase !== 'done';
 
-  // Preview text depending on the last message type.
+  // Preview text, through the shared labeller so every message type is covered
+  // and the line can never end on a bare "You : ".
   let preview = t('groups.noMessage');
   if (last) {
     const who = last.uid === user.uid ? t('groups.you') : (last.pseudo || '');
-    let body = last.text || '';
-    if (last.type === 'poll') body = t('groups.pollPreview');
-    else if (last.type === 'focus') body = t('groups.focusPreview');
-    else if (last.type === 'sessionEnd') body = t('groups.sessionEndedPreview');
-    else if (last.type === 'deck') body = t('groups.deckPreview');
-    else if (last.type === 'flashcard') body = t('groups.flashcardPreview');
+    const body = lastMessageLabel(last, t);
     preview = who ? `${who} : ${body}` : body;
   }
 
@@ -2167,7 +2191,7 @@ export default function PageGroups({ user, prefs, unreadByGroup = {}, onMarkRead
   );
 
   return (
-    <div style={{ maxWidth: 860, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ maxWidth: PAGE_MAX_W, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
         <h1 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>💬 {t('groups.title')}</h1>

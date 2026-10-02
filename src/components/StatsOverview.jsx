@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { weeklyRecap, startOfWeek } from '../lib/weeklyRecap';
+import { focusForDay, currentStreak } from '../lib/focusDay';
 import { formatDuration } from '../lib/duration';
 import { XP_LEVELS } from '../data/levels';
 
@@ -78,7 +79,11 @@ export default function StatsOverview({ data }) {
   const dur = mins => formatDuration(mins / 60, lang);
 
   // ── Level & XP (same lookup as before: tolerates the 12 → 15 level gap) ──
-  const { xp = 0, streak = 0, todaySess = 0, todayMins = 0, totalFocusHours = 0, subjects = [] } = data || {};
+  const { xp = 0, totalFocusHours = 0, subjects = [] } = data || {};
+  // Today's figures and the streak go through lib/focusDay: reading todayMins /
+  // todaySess / streak raw showed the last day STUDIED as if it were today.
+  const today = focusForDay(data, now);
+  const streak = currentStreak(data, now);
   const curDef = [...XP_LEVELS].reverse().find(l => xp >= l.xpNeeded) || XP_LEVELS[0];
   const nextDef = XP_LEVELS.find(l => l.xpNeeded > xp);
   const xpInLvl = nextDef ? xp - curDef.xpNeeded : xp;
@@ -93,8 +98,8 @@ export default function StatsOverview({ data }) {
 
   const tiles = [
     { icon: Flame, value: streak, label: t('stats.streak'), unit: t('stats.unitDays') },
-    { icon: Clock, value: todayMins, label: t('stats.focus'), unit: t('stats.unitMinToday') },
-    { icon: Timer, value: todaySess, label: t('stats.sessions'), unit: t('stats.unitToday') },
+    { icon: Clock, value: today.mins, label: t('stats.focus'), unit: t('stats.unitMinToday') },
+    { icon: Timer, value: today.sessions, label: t('stats.sessions'), unit: t('stats.unitToday') },
     { icon: Hourglass, value: formatNumber(Math.round(totalFocusHours * 10) / 10), label: t('stats.total'), unit: t('stats.unitHours') },
     { icon: CalendarCheck, value: `${recap.blocksDone}/${recap.blocksPlanned}`, label: t('recap.blocksDone') },
     { icon: RotateCcw, value: recap.reviewsDue, label: t('recap.reviewsDue', { count: recap.reviewsDue }) },
@@ -109,7 +114,9 @@ export default function StatsOverview({ data }) {
 
       {/* ── Header: title + week toggle ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        {/* A floor rather than minWidth: 0, which let the title shrink and
+            break onto two lines instead of pushing the toggle below it. */}
+        <div style={{ flex: 1, minWidth: 170 }}>
           <h2 id="overview-title" style={{ margin: 0, fontSize: '.95rem', fontWeight: 800, color: 'var(--text-primary)' }}>
             {t('stats.overviewTitle')}
           </h2>
@@ -224,7 +231,15 @@ export default function StatsOverview({ data }) {
       </div>
 
       {/* ── Tiles ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(128px, 1fr))', gap: 8 }}>
+      {/* A fixed column count: auto-fit packed as many tiles as fitted across
+          and stranded the rest on a half-empty line. The rule lives in a local
+          <style> block, the way PageGroups does for its chat column, because
+          an inline style cannot carry a media query. */}
+      <style>{`
+        .stat-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+        @media (max-width: 680px) { .stat-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+      `}</style>
+      <div className="stat-tiles">
         {tiles.map((tile, i) => <Tile key={i} {...tile} />)}
       </div>
 

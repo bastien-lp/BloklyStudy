@@ -26,6 +26,8 @@ import {
 } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatDuration } from '../lib/duration';
+import { inkOn } from '../lib/contrast';
+import { shortDayName, fullDayName } from '../lib/dayNames';
 import { pendingAutoBlocks } from '../lib/autoPlan';
 import AutoPlanModal from '../components/AutoPlanModal';
 import { useFeature } from '../lib/appConfig';
@@ -48,10 +50,13 @@ function getWeekStart(offset = 0) {
   return mon;
 }
 
-/** Capitalize first letter. */
-const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
-
-/** Compact hour label, locale-aware: FR "08h"/"08h30", else "08:00"/"08:30". */
+/**
+ * Compact hour label, locale-aware: FR "8h" / "8h15", else "8:00" / "8:15".
+ * The ONE clock formatter of the planner — the axis, the blocks, the pickers
+ * and the printed sheet all go through it, so they cannot drift apart again.
+ * The hour is deliberately not zero-padded: "08h" next to "8:00" was the
+ * clearest sign that two different formatters were at work.
+ */
 /** Solid light version of a hex colour (blended 85% with white) — used for the
  *  print grid so blocks have an opaque tint instead of a transparent overlay. */
 function printTint(hex) {
@@ -63,9 +68,9 @@ function printTint(hex) {
 }
 
 function fmtH(h, lang) {
-  const hh = String(Math.floor(h)).padStart(2, '0');
+  const hh = Math.floor(h);
   const mm = String(Math.round((h % 1) * 60)).padStart(2, '0');
-  if (lang === 'fr') return `${hh}h${mm === '00' ? '' : mm}`;
+  if (lang === 'fr') return mm === '00' ? `${hh}h` : `${hh}h${mm}`;
   return `${hh}:${mm}`;
 }
 
@@ -103,11 +108,11 @@ function findFreeSlot(blocks, newBlock) {
   return newBlock.hour;
 }
 
-/** Localized weekday arrays (0=Mon … 6=Sun). 2024-01-01 is a Monday. */
+/** Localized weekday arrays (0=Mon … 6=Sun), from the shared lib/dayNames. */
 function useDayNames() {
   const { formatDate } = useTranslation();
-  const daysShort = useMemo(() => Array.from({ length: 7 }, (_, i) => cap(formatDate(new Date(2024, 0, 1 + i), { weekday: 'short' }).replace(/\.$/, ''))), [formatDate]);
-  const daysFull  = useMemo(() => Array.from({ length: 7 }, (_, i) => cap(formatDate(new Date(2024, 0, 1 + i), { weekday: 'long' }))), [formatDate]);
+  const daysShort = useMemo(() => Array.from({ length: 7 }, (_, i) => shortDayName(formatDate, i)), [formatDate]);
+  const daysFull  = useMemo(() => Array.from({ length: 7 }, (_, i) => fullDayName(formatDate, i)), [formatDate]);
   return { daysShort, daysFull };
 }
 
@@ -266,7 +271,7 @@ function BlockModal({ block, weekStart, subjects, onSave, onClose, mode = 'add' 
                       color: sel ? 'var(--text-primary)' : 'var(--text-muted)', fontSize: '.72rem', cursor: 'pointer', textAlign: 'left' }}>
                     {sel
                       ? <CheckSquare size={13} strokeWidth={2.2} style={{ verticalAlign: '-2px' }} />
-                      : <Square size={13} strokeWidth={2.2} style={{ verticalAlign: '-2px' }} />} Ch.{i + 1} — {ch.name}
+                      : <Square size={13} strokeWidth={2.2} style={{ verticalAlign: '-2px' }} />} {t('planning.chapAbbrev', { count: i + 1 })} — {ch.name}
                   </button>
                 );
               })}
@@ -276,7 +281,7 @@ function BlockModal({ block, weekStart, subjects, onSave, onClose, mode = 'add' 
 
         <div>
           <label style={{ fontSize: '.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
-            {t('planning.objective')} <span style={{ color: 'rgba(255,255,255,.2)' }}>{t('planning.optionalParen')}</span>
+            {t('planning.objective')} <span style={{ color: 'var(--text-placeholder)' }}>{t('planning.optionalParen')}</span>
           </label>
           <input value={task} onChange={e => setTask(e.target.value)} placeholder={t('planning.objectivePlaceholder')} style={inp} />
         </div>
@@ -289,8 +294,8 @@ function BlockModal({ block, weekStart, subjects, onSave, onClose, mode = 'add' 
 
         <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
           <button onClick={onClose}
-            style={{ flex: 1, padding: '10px', borderRadius: 10, border: '1px solid rgba(255,255,255,.08)',
-              background: 'transparent', color: 'rgba(255,255,255,.4)', cursor: 'pointer', fontSize: '.85rem' }}>
+            style={{ flex: 1, padding: '10px', borderRadius: 10, border: '1px solid var(--border)',
+              background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '.85rem' }}>
             {t('common.cancel')}
           </button>
           <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: .98 }} onClick={handleSave}
@@ -358,7 +363,7 @@ const DOUBLE_TAP_MS = 450;
 const DOUBLE_TAP_PX = 32;
 
 function CourseBlock({ block, subject, onDelete, onToggle, onEdit, onMoveToFree, onResizeStart, isDragging, onDragStart, gridStartH = 0 }) {
-  const { lang } = useTranslation();
+  const { t, lang } = useTranslation();
   const tapRef  = useRef(null); // { t, x, y } of the previous tap
   const longRef = useRef(null);
   const touchToggleRef = useRef(0); // when touch last toggled, to ignore the synthetic dblclick
@@ -418,7 +423,18 @@ function CourseBlock({ block, subject, onDelete, onToggle, onEdit, onMoveToFree,
   }
   function handleTouchEnd() { if (longRef.current) { clearTimeout(longRef.current); longRef.current = null; } }
 
+  // The block is painted in a colour the student picked, so its label colour
+  // has to be derived from that colour instead of being assumed white: on a
+  // pale subject (yellow, mint) white text was unreadable.
+  const ink = inkOn(color);
+  // Which chapters this revision covers. BlockModal stores them as indices on
+  // the block; numbers are the only form that fits a one-hour block.
+  const chapterNums = (block.chapters || [])
+    .filter(i => Number.isInteger(i))
+    .sort((x, y) => x - y)
+    .map(i => i + 1);
   const blockH = Math.max(PX_H * SLOT_H, block.dur * PX_H);
+  const showChapters = chapterNums.length > 0 && blockH > 50;
   const top = (block.hour - gridStartH) * PX_H;
 
   return (
@@ -447,15 +463,25 @@ function CourseBlock({ block, subject, onDelete, onToggle, onEdit, onMoveToFree,
       >
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, padding: '2px 4px' }}>
           <div style={{ fontSize: blockH > 40 ? '.82rem' : blockH > 25 ? '.72rem' : '.62rem', fontWeight: 800,
-            color: done ? `${color}80` : '#fff',
+            color: done ? 'var(--text-muted)' : ink,
             textDecoration: done ? 'line-through' : 'none',
             textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis',
-            display: '-webkit-box', WebkitLineClamp: blockH > 50 ? 2 : 1, WebkitBoxOrient: 'vertical' }}>
+            display: '-webkit-box', WebkitLineClamp: blockH > 50 && !showChapters ? 2 : 1, WebkitBoxOrient: 'vertical' }}>
             {block.type === 'custom' ? block.label : (subject?.name || '?')}
           </div>
           {blockH > 42 && (
-            <div style={{ fontSize: '.6rem', color: done ? `${color}60` : 'rgba(255,255,255,.75)', fontWeight: 500 }}>
+            <div style={{ fontSize: '.6rem', fontWeight: 500,
+              color: done ? 'var(--text-muted)' : ink, opacity: done ? 1 : .78 }}>
               {fmtH(block.hour, lang)}–{fmtH(block.hour + block.dur, lang)}
+            </div>
+          )}
+          {showChapters && (
+            <div title={chapterNums.map(n => t('planning.chapAbbrev', { count: n })).join(', ')}
+              style={{ maxWidth: '100%', fontSize: '.58rem', fontWeight: 700,
+                color: done ? 'var(--text-muted)' : ink, opacity: done ? 1 : .88,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {t('planning.chapAbbrev', { count: chapterNums[0] })}
+              {chapterNums.length > 1 && `, ${chapterNums.slice(1).join(', ')}`}
             </div>
           )}
         </div>
@@ -535,7 +561,7 @@ function TemplatesModal({ blocks, wkOff, onApply, onClose, user }) {
               style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border-strong)',
                 background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: '.82rem', outline: 'none' }} />
             <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: .97 }} onClick={saveTemplate} disabled={!tplName.trim() || saving}
-              style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: '.78rem', fontWeight: 700, cursor: 'pointer' }}>
+              style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'var(--bg-base)', fontSize: '.78rem', fontWeight: 700, cursor: 'pointer' }}>
               {saving ? '…' : t('planning.saveBtn')}
             </motion.button>
           </div>
@@ -558,7 +584,7 @@ function TemplatesModal({ blocks, wkOff, onApply, onClose, user }) {
               </div>
               <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: .97 }}
                 onClick={() => { onApply(tp.blocks); onClose(); }}
-                style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: '.75rem', fontWeight: 700, cursor: 'pointer' }}>
+                style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'var(--bg-base)', fontSize: '.75rem', fontWeight: 700, cursor: 'pointer' }}>
                 {t('planning.apply')}
               </motion.button>
               <button onClick={() => deleteTemplate(tp.id)}
@@ -926,7 +952,7 @@ export default function PagePlanning({ user }) {
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
       <motion.div animate={{ opacity: [.3, 1, .3] }} transition={{ duration: 1.5, repeat: Infinity }}
-        style={{ color: 'rgba(255,255,255,.4)', fontSize: '.9rem' }}>{t('planning.loadingPlanning')}</motion.div>
+        style={{ color: 'var(--text-secondary)', fontSize: '.9rem' }}>{t('planning.loadingPlanning')}</motion.div>
     </div>
   );
 
@@ -997,7 +1023,7 @@ export default function PagePlanning({ user }) {
             style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)',
               background: showSettings ? 'var(--accent-subtle)' : 'var(--bg-card)',
               color: showSettings ? 'var(--accent)' : 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.82rem' }}><Settings size={15} strokeWidth={2} /></motion.button>
-          <TourButton onClick={tour.start} label={t('common.guidedTour')} align='center' />
+          <TourButton onClick={tour.start} label={t('common.guidedTour')} />
         </div>
       </div>
 
@@ -1009,17 +1035,17 @@ export default function PagePlanning({ user }) {
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '10px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, flexWrap: 'wrap' }}>
               <span style={{ fontSize: '.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>{t('planning.timeRange')}</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <label style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.4)' }}>{t('planning.start')}</label>
+                <label style={{ fontSize: '.72rem', color: 'var(--text-secondary)' }}>{t('planning.start')}</label>
                 <select value={startH} onChange={e => { const v = parseInt(e.target.value, 10); setStartH(v); if (user) updateDoc(doc(db, 'users', user.uid, 'data', 'main'), { planningStartH: v }).catch(() => {}); }}
                   style={{ padding: '4px 8px', borderRadius: 7, border: '1px solid var(--border-strong)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: '.78rem', outline: 'none' }}>
-                  {Array.from({ length: 24 }, (_, i) => <option key={i} value={i} style={{ background: 'var(--bg-modal)' }}>{i}{lang === 'fr' ? 'h00' : ':00'}</option>)}
+                  {Array.from({ length: 24 }, (_, i) => <option key={i} value={i} style={{ background: 'var(--bg-modal)' }}>{fmtH(i, lang)}</option>)}
                 </select>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <label style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.4)' }}>{t('planning.end')}</label>
+                <label style={{ fontSize: '.72rem', color: 'var(--text-secondary)' }}>{t('planning.end')}</label>
                 <select value={endH} onChange={e => { const v = parseInt(e.target.value, 10); setEndH(v); if (user) updateDoc(doc(db, 'users', user.uid, 'data', 'main'), { planningEndH: v }).catch(() => {}); }}
                   style={{ padding: '4px 8px', borderRadius: 7, border: '1px solid var(--border-strong)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: '.78rem', outline: 'none' }}>
-                  {Array.from({ length: 24 }, (_, i) => <option key={i + 1} value={i + 1} style={{ background: 'var(--bg-modal)' }}>{i + 1}{lang === 'fr' ? 'h00' : ':00'}</option>)}
+                  {Array.from({ length: 24 }, (_, i) => <option key={i + 1} value={i + 1} style={{ background: 'var(--bg-modal)' }}>{fmtH(i + 1, lang)}</option>)}
                 </select>
               </div>
             </div>
@@ -1076,7 +1102,9 @@ export default function PagePlanning({ user }) {
               </div>
 
               {/* Subjects — tap to add */}
-              <div style={{ display: 'flex', gap: 6, overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: 2 }}>
+              {/* Wraps rather than scrolling: a row clipped at the right edge
+                  with no affordance simply hid the last subjects. */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingBottom: 2 }}>
                 {subjects.map(s => (
                   <button key={s.id}
                     onClick={() => addBlock({ type: 'rev', subj: s.id, dur: 1, task: '', notes: '', status: 'todo', day: mobileDay, hour: 9, chapters: [] })}
@@ -1118,11 +1146,12 @@ export default function PagePlanning({ user }) {
                       color: mobileDay === 6 ? 'var(--text-muted)' : 'var(--text-primary)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: mobileDay === 6 ? .4 : 1 }}>→</button>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '32px 1fr', overflowY: 'auto', maxHeight: '62vh' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '32px 1fr', overflowY: 'auto', maxHeight: '62vh',
+                  paddingBottom: 'var(--dock-h, 92px)' }}>
                   <div style={{ position: 'relative', borderRight: '1px solid var(--border)', background: 'var(--bg-card)' }}>
                     {Array.from({ length: TOTAL_H }, (_, i) => (
                       <div key={i} style={{ height: PX_H, display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', paddingRight: 3, paddingTop: 2, borderTop: i > 0 ? '1px solid var(--border)' : 'none' }}>
-                        <span style={{ fontSize: '.5rem', color: 'var(--text-muted)' }}>{startH + i}{lang === 'fr' ? 'h' : ':00'}</span>
+                        <span style={{ fontSize: '.5rem', color: 'var(--text-muted)' }}>{fmtH(startH + i, lang)}</span>
                       </div>
                     ))}
                     <QuarterTicks hours={TOTAL_H} />
@@ -1167,7 +1196,7 @@ export default function PagePlanning({ user }) {
             <div data-tour="tour-planning-sidebar" style={{
               display: 'flex', flexDirection: sidebarInline ? 'column' : 'row',
               flexWrap: sidebarInline ? 'nowrap' : 'wrap', gap: 6, flexShrink: 0,
-              width: sidebarInline ? 156 : '100%',
+              width: sidebarInline ? 190 : '100%',
               background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '10px', borderRadius: 12,
             }}>
               {!sidebarInline && <div style={{ width: '100%', fontSize: '.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 2 }}>{t('planning.dragDown')}</div>}
@@ -1182,7 +1211,14 @@ export default function PagePlanning({ user }) {
                   onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.02)'}
                   onMouseLeave={e => e.currentTarget.style.transform = 'none'}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
-                  <span style={{ fontSize: '.76rem', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: sidebarInline ? 100 : 120 }}>{s.name}</span>
+                  {/* Two lines before an ellipsis, and the full name on hover:
+                      "Thermodynamique" and "Chimie analytique" were being cut
+                      mid-word with nothing to reveal the rest. */}
+                  <span title={s.name}
+                    style={{ fontSize: '.76rem', fontWeight: 600, color: 'var(--text-primary)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.25,
+                      display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                      maxWidth: sidebarInline ? 136 : 160 }}>{s.name}</span>
                 </div>
               ))}
               {/* Custom block */}
@@ -1210,7 +1246,9 @@ export default function PagePlanning({ user }) {
             </div>
 
             {/* Grid */}
-            <div data-tour="tour-planning-grid" style={{ flex: 1, overflow: 'auto', maxHeight: '75vh', background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border-strong)' }}>
+            <div data-tour="tour-planning-grid" style={{ flex: 1, overflow: 'auto', maxHeight: '75vh',
+              background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border-strong)',
+              paddingBottom: 'var(--dock-h, 92px)' }}>
               <div ref={gridRef} style={{ display: 'grid', gridTemplateColumns: `40px repeat(7,minmax(88px,1fr))`, minWidth: 680 }}>
 
                 {/* Corner header — sticky top+left */}
@@ -1251,7 +1289,7 @@ export default function PagePlanning({ user }) {
                 <div style={{ position: 'sticky', left: 0, zIndex: 8, borderRight: '1px solid var(--border)', background: 'var(--bg-nav)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
                   {Array.from({ length: TOTAL_H }, (_, i) => (
                     <div key={i} style={{ position: 'absolute', top: i * PX_H, right: 3, fontSize: '.58rem', color: 'var(--text-muted)', lineHeight: 1, paddingTop: 2 }}>
-                      {startH + i}:00
+                      {fmtH(startH + i, lang)}
                     </div>
                   ))}
                   <QuarterTicks hours={TOTAL_H} />
@@ -1404,7 +1442,7 @@ export default function PagePlanning({ user }) {
       {drag && (
         <div style={{ position: 'fixed', left: drag.x, top: drag.y, transform: 'translate(-50%,-130%)',
           zIndex: 9999, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 6,
-          padding: '6px 12px', borderRadius: 10, background: `${drag.color || '#4A90D9'}ee`, color: '#fff',
+          padding: '6px 12px', borderRadius: 10, background: `${drag.color || '#4A90D9'}ee`, color: inkOn(drag.color || '#4A90D9'),
           fontSize: '.76rem', fontWeight: 700, boxShadow: '0 8px 24px rgba(0,0,0,.35)', whiteSpace: 'nowrap' }}>
           {drag.label || t('planning.newBlock')}
         </div>

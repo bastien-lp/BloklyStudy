@@ -186,7 +186,7 @@ function DocCard({ user, doc, subjects, onOpen, onShare, onPublish, lib, index }
               style={{ flex: 1, minWidth: 0, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--accent)',
                 background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: '.76rem', fontFamily: 'var(--font-family)' }} />
             <button type="submit" aria-label={t('common.save')}
-              style={{ border: 'none', borderRadius: 8, background: 'var(--accent)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0 8px' }}>
+              style={{ border: 'none', borderRadius: 8, background: 'var(--accent)', color: 'var(--bg-base)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0 8px' }}>
               <Check size={14} />
             </button>
           </form>

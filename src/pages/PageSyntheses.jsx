@@ -33,12 +33,13 @@ import ChapterNotesModal from '../components/docs/ChapterNotesModal';
 import { annotationSummary } from '../lib/docs';
 import LibraryBrowser from '../components/docs/LibraryBrowser';
 import { useFeature } from '../lib/appConfig';
+import { PAGE_MAX_W } from '../components/ui/scale';
 
 const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
 
 // Status definitions. `labelKey` is resolved to text at render time.
 const STATUS = {
-  todo: { labelKey: 'syntheses.statusTodo', emoji: '⭕', color: 'rgba(255,255,255,.3)', bg: 'rgba(255,255,255,.05)' },
+  todo: { labelKey: 'syntheses.statusTodo', emoji: '⭕', color: 'var(--text-muted)', bg: 'var(--bg-card-hover)' },
   wip:  { labelKey: 'syntheses.statusWip',  emoji: '📝', color: '#F1C40F',             bg: 'rgba(241,196,15,.12)' },
   done: { labelKey: 'syntheses.statusDone', emoji: '✅', color: '#27AE60',             bg: 'rgba(39,174,96,.12)' },
 };
@@ -396,7 +397,7 @@ export default function PageSyntheses({ user }) {
   );
 
   return (
-    <div style={{ maxWidth: 860, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ maxWidth: PAGE_MAX_W, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
       <TourButton onClick={tour.start} label={t('common.guidedTour')} />
 

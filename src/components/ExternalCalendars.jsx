@@ -147,7 +147,7 @@ export function CalendarsModal({ calendars, errors, serviceDown, onSave, onClose
               </div>
             </div>
             <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: .98 }} onClick={addCalendar} disabled={!url.trim() || saving}
-              style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: '.8rem', fontWeight: 700,
+              style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'var(--bg-base)', fontSize: '.8rem', fontWeight: 700,
                 cursor: !url.trim() || saving ? 'default' : 'pointer', opacity: !url.trim() || saving ? .5 : 1 }}>
               {saving ? '…' : t('common.add')}
             </motion.button>

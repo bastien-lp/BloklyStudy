@@ -381,6 +381,27 @@ function PineBody() {
 
 /** Below this much growth, a scaling species is still a sprout. */
 const SPROUT_UNTIL = 0.34;
+
+/**
+ * The soil mound is a lens drawn OVER the foot of the plant, with its control
+ * point this far above the soil line. A quadratic curve reaches half of its
+ * control offset, so the dirt actually crests at MOUND_TOP.
+ */
+const MOUND_CTRL = 11;
+const MOUND_TOP = MOUND_CTRL / 2;
+
+/**
+ * How deep a sprout's foot sits INSIDE the mound.
+ *
+ * Every plant is painted before the mound, so the dirt covers its foot and it
+ * reads as planted rather than placed. A full-grown plant starts at the soil
+ * line and is buried the whole MOUND_TOP; a sprout is only ~28 units tall at
+ * its smallest, and that much dirt swallowed its seed leaves. Standing it on
+ * the crest instead fixed the leaves but left it perched on top of the mound —
+ * balanced on the one highest point of a curved lens, visibly outside the
+ * ground. This is the middle: foot hidden, leaves clear.
+ */
+const SPROUT_BURY = 3;
 /** How tall the sprout stands, fully "sprouted", in viewBox units. */
 const SPROUT_H = 62;
 
@@ -476,6 +497,10 @@ export function GardenPlant({ species = 'bamboo', pct = 0, ripe = false, tints =
   // starts at 0.42 — the height the sprout had reached — so the switch does
   // not jump.
   const sprouting = kind.growth === 'scale' && grown < SPROUT_UNTIL;
+  // Where the plant meets the ground: the soil line for a grown plant, and a
+  // little way into the mound for a sprout (see SPROUT_BURY). Scaling happens
+  // about this point, so the plant cannot drift off the ground as it grows.
+  const baseY = sprouting ? SOIL_Y - MOUND_TOP + SPROUT_BURY : SOIL_Y;
   const scale = kind.growth !== 'scale' ? 1
     : sprouting ? 0.45 + 0.55 * (grown / SPROUT_UNTIL)
       : 0.42 + 0.58 * ((grown - SPROUT_UNTIL) / (1 - SPROUT_UNTIL));
@@ -523,16 +548,18 @@ export function GardenPlant({ species = 'bamboo', pct = 0, ripe = false, tints =
           style={{ originX: `${CENTER}px`, originY: `${SOIL_Y}px` }}>
           <motion.g
             initial={false} animate={{ scale }} transition={{ duration: .9, ease: [.22, 1, .36, 1] }}
-            style={{ originX: `${CENTER}px`, originY: `${SOIL_Y}px` }}>
+            style={{ originX: `${CENTER}px`, originY: `${baseY}px` }}>
             <g clipPath={kind.growth === 'clip' ? `url(#grow${id})` : undefined}>
-              {sprouting ? <Seedling species={species} /> : <Body tint={tints[0]} id={id} />}
+              {sprouting
+                ? <g transform={`translate(0 ${baseY - SOIL_Y})`}><Seedling species={species} /></g>
+                : <Body tint={tints[0]} id={id} />}
             </g>
           </motion.g>
         </motion.g>
 
         {/* soil mound and grass, drawn over the foot of the plant */}
-        <path d={`M30 ${SOIL_Y} Q65 ${SOIL_Y - 11} 100 ${SOIL_Y} Q65 ${SOIL_Y + 13} 30 ${SOIL_Y} Z`} fill={SCENE.soil} />
-        <path d={`M30 ${SOIL_Y} Q65 ${SOIL_Y - 11} 100 ${SOIL_Y} Q65 ${SOIL_Y - 4} 30 ${SOIL_Y} Z`} fill={SCENE.soilDark} opacity=".4" />
+        <path d={`M30 ${SOIL_Y} Q${CENTER} ${SOIL_Y - MOUND_CTRL} 100 ${SOIL_Y} Q${CENTER} ${SOIL_Y + 13} 30 ${SOIL_Y} Z`} fill={SCENE.soil} />
+        <path d={`M30 ${SOIL_Y} Q${CENTER} ${SOIL_Y - MOUND_CTRL} 100 ${SOIL_Y} Q${CENTER} ${SOIL_Y - 4} 30 ${SOIL_Y} Z`} fill={SCENE.soilDark} opacity=".4" />
         <g stroke={SCENE.leafDeep} strokeWidth="1.7" strokeLinecap="round" fill="none" opacity=".62">
           <path d={`M38 ${SOIL_Y} q-5 -7 -1 -12`} />
           <path d={`M45 ${SOIL_Y + 1} q3 -8 9 -10`} />

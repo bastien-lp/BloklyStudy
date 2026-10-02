@@ -18,6 +18,8 @@
  *     claim is stored per day in `reserve.quests` = { day, claimed: [ids] }.
  */
 
+import { focusForDay } from './focusDay';
+
 const DAY_MS = 86_400_000;
 
 /** Local YYYY-MM-DD, the key every "today" test uses. */
@@ -38,13 +40,13 @@ function plannerDayStr(now = new Date()) {
 const asArray = v => (Array.isArray(v) ? v : []);
 const isToday = (iso, dayKey) => typeof iso === 'string' && iso.slice(0, 10) === dayKey;
 
-/** Today's focus counters, which roll over on their own stored day. */
+/**
+ * Today's focus, through the shared reader (lib/focusDay) so a quest can never
+ * disagree with the Stats page about what "today" holds.
+ */
 function todayCounters(main, dayKey) {
-  const sameDay = main?.statsDay === dayKey;
-  return {
-    mins: sameDay ? Number(main?.todayMins) || 0 : 0,
-    sessions: sameDay ? Number(main?.todaySess) || 0 : 0,
-  };
+  const { mins, sessions } = focusForDay(main, new Date(`${dayKey}T12:00:00`));
+  return { mins, sessions };
 }
 
 /** Chapter reviews completed today, counted from the spaced-repetition data. */

@@ -393,7 +393,7 @@ function GamePanel({ onClose, backOnline }) {
                     </span>
                     <button onClick={onClose}
                       style={{ padding: '6px 14px', borderRadius: 20, border: 'none', cursor: 'pointer',
-                        background: 'var(--accent)', color: '#fff', fontSize: '.72rem', fontWeight: 700 }}>
+                        background: 'var(--accent)', color: 'var(--bg-base)', fontSize: '.72rem', fontWeight: 700 }}>
                       {t('game.backToApp')}
                     </button>
                   </div>
