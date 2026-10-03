@@ -12,6 +12,18 @@
  * them. Group activity (live quiz, shared document, @mention) is sent by the
  * acting member's app through `notifyGroup`.
  *
+ * Social notifications — every group message, every private message, every
+ * friend request — are ON BY DEFAULT and independent of the reminders' master
+ * switch (`enabled`). The sender's app calls `notifyGroup(kind: 'message')` /
+ * `notifyUser`, with the id of what was just written; the worker reads it
+ * back from Firestore before announcing it. Groups and people can be muted
+ * (`setMuted`, stored in the prefs, shared by all devices).
+ *
+ * A browser never lets a site turn notifications on by itself: the student
+ * has to accept once per browser. `ensurePushSubscription` registers the
+ * device silently when that permission is already granted; otherwise the app
+ * shows NotificationPrompt.
+ *
  * Requirements: a service worker (production build), the Push API, the
  * worker URL and the VAPID public key. iPhone / iPad: only in the installed
  * app (Add to Home Screen), iOS 16.4+.
@@ -33,6 +45,7 @@ export const DEFAULT_NOTIFICATION_PREFS = {
   exams:  { on: true, time: '09:00', days: [7, 3, 1] },
   weekly: { on: true, day: 6, time: '19:00' },                                          // 6 = Sunday
   group:  { quiz: true, doc: true, mention: true },
+  social: { groupMessages: true, dms: true, friendRequests: true },                     // on by default, see above
 };
 
 /** Stored prefs merged over the defaults (so new options get a value). */
@@ -46,7 +59,14 @@ export function withDefaults(prefs) {
     exams: { ...d.exams, ...p.exams },
     weekly: { ...d.weekly, ...p.weekly },
     group: { ...d.group, ...p.group },
+    social: { ...d.social, ...p.social },
   };
+}
+
+/** The mute lists of stored prefs: { groups: Set, users: Set }. */
+export function mutedOf(prefs) {
+  const m = prefs?.muted || {};
+  return { groups: new Set(Array.isArray(m.groups) ? m.groups : []), users: new Set(Array.isArray(m.users) ? m.users : []) };
 }
 
 // ── Support ──
@@ -78,16 +98,34 @@ async function api(user, method, path, body) {
 
 export async function loadNotificationPrefs(user) {
   const data = await api(user, 'GET', '/notifications/prefs');
-  return { prefs: withDefaults(data.prefs), devices: data.devices || 0 };
+  return { prefs: withDefaults(data.prefs), devices: data.devices || 0, muted: mutedOf(data.prefs) };
+}
+
+/** Mutes / unmutes a group ('groups') or a person ('users'). Resolves to the new lists. */
+export async function setMutedRemote(user, type, id, muted, lang) {
+  const data = await api(user, 'PUT', '/notifications/mute', { type, id, muted, lang });
+  return mutedOf({ muted: data.muted });
+}
+
+/**
+ * Fire-and-forget: announce what I just wrote to one person —
+ * `{ kind: 'dm', toUid, messageId }` or `{ kind: 'friendRequest', toUid }`.
+ */
+export function notifyUser(user, { kind, toUid, messageId }) {
+  if (!WORKER_URL || !VAPID_PUBLIC_KEY || !user || !toUid) return;
+  api(user, 'POST', '/notify/user', { kind, toUid, messageId }).catch(() => {});
 }
 
 export const saveNotificationPrefs = (user, prefs, lang) => api(user, 'PUT', '/notifications/prefs', { prefs, lang });
 export const sendTestNotification = (user, title, body) => api(user, 'POST', '/notifications/test', { title, body });
 
-/** Fire-and-forget: tell the other members of a group about an action (they opted in or not). */
-export function notifyGroup(user, { groupId, kind, name, detail, mentions }) {
+/**
+ * Fire-and-forget: tell the other members of a group about an action (they
+ * opted in or not). `kind: 'message'` + `messageId` = a new chat message.
+ */
+export function notifyGroup(user, { groupId, kind, name, detail, mentions, messageId }) {
   if (!WORKER_URL || !VAPID_PUBLIC_KEY || !user) return;
-  api(user, 'POST', '/notify/group', { groupId, kind, name, detail, mentions }).catch(() => {});
+  api(user, 'POST', '/notify/group', { groupId, kind, name, detail, mentions, messageId }).catch(() => {});
 }
 
 // ── This device ──
@@ -113,6 +151,32 @@ export async function enablePushOnThisDevice(user, lang) {
     || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(VAPID_PUBLIC_KEY) });
   await api(user, 'POST', '/push/subscribe', { subscription: sub.toJSON(), lang });
   return 'granted';
+}
+
+/**
+ * Registers this device without asking anything, when the browser permission
+ * is already granted (an earlier visit, another account on this browser, a
+ * re-installed app). Also re-registers an existing subscription, which repairs
+ * a device the worker forgot. Resolves to true when the device can receive.
+ * Never prompts: asking is NotificationPrompt's job, on a tap.
+ */
+export async function ensurePushSubscription(user, lang) {
+  if (pushSupport() !== 'supported' || notificationPermission() !== 'granted' || !user) return false;
+  // A student who switched notifications off on this device stays off.
+  try { if (localStorage.getItem(`blokly-push-off-${user.uid}`) === '1') return false; } catch { /* no storage */ }
+  const reg = await navigator.serviceWorker.ready;
+  const sub = (await reg.pushManager.getSubscription())
+    || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(VAPID_PUBLIC_KEY) });
+  await api(user, 'POST', '/push/subscribe', { subscription: sub.toJSON(), lang });
+  return true;
+}
+
+/** Remembers on this browser that the student turned this device off (or back on). */
+export function rememberDeviceChoice(user, off) {
+  try {
+    if (off) localStorage.setItem(`blokly-push-off-${user.uid}`, '1');
+    else localStorage.removeItem(`blokly-push-off-${user.uid}`);
+  } catch { /* no storage */ }
 }
 
 export async function disablePushOnThisDevice(user) {

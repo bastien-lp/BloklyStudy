@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Home } from 'lucide-react';
-import { doc, getDoc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/config';
+import { sendFriendRequest } from '../lib/friends';
 import { BADGES, BADGE_ICONS } from '../data/badges';
 import { useTranslation } from '../i18n';
 import { reportSaveError } from '../lib/notify';
@@ -54,13 +55,8 @@ export default function UserProfileModal({ targetUid, targetPseudo, user, online
   async function sendRequest() {
     if (busy) return;
     setBusy(true);
-    const myPseudo = user.displayName||user.email?.split('@')[0]||'Anonyme';
-    try {
-      await setDoc(doc(db,'friendRequests',targetUid,'requests',user.uid), {
-        from:user.uid, fromPseudo:myPseudo, to:targetUid, toPseudo:targetPseudo,
-        sentAt:new Date().toISOString(), status:'pending'
-      });
-    } catch(e){ reportSaveError(e); }
+    try { await sendFriendRequest(user, targetUid, targetPseudo); }
+    catch(e){ reportSaveError(e); }
     setBusy(false);
   }
 

@@ -115,19 +115,29 @@ self.addEventListener('fetch', event => {
 });
 
 // ── Push notifications (see worker/src/notifications.js) ──
-// Payload: { title, body, tab, tag } — already translated by the app / worker.
+// Payload: { title, body, tab, tag, kind? } — already translated by the app / worker.
+// A chat message (kind 'message' | 'dm') is not shown while Blokly is open and
+// on screen: the app already rings and shows its unread badge.
+
+const CHAT_KINDS = new Set(['message', 'dm']);
 
 self.addEventListener('push', event => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch { data = { title: 'Blokly', body: event.data?.text() || '' }; }
-  event.waitUntil(self.registration.showNotification(data.title || 'Blokly', {
-    body: data.body || '',
-    icon: BASE + 'icons/icon-192.png',
-    badge: BASE + 'icons/icon-192.png',
-    tag: data.tag || undefined,
-    renotify: Boolean(data.tag),
-    data: { tab: data.tab || '' },
-  }));
+  event.waitUntil((async () => {
+    if (CHAT_KINDS.has(data.kind)) {
+      const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      if (windows.some(w => w.visibilityState === 'visible' && w.focused)) return;
+    }
+    await self.registration.showNotification(data.title || 'Blokly', {
+      body: data.body || '',
+      icon: BASE + 'icons/icon-192.png',
+      badge: BASE + 'icons/icon-192.png',
+      tag: data.tag || undefined,
+      renotify: Boolean(data.tag),
+      data: { tab: data.tab || '' },
+    });
+  })());
 });
 
 // Tap: focus an open Blokly window on the right tab, or open one.

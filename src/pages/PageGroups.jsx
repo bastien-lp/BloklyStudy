@@ -14,7 +14,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, rtdb } from '../firebase/config';
 import { ref as dbRef, onValue, set, remove, onDisconnect } from 'firebase/database';
-import { Square, FolderOpen, Trophy, Trees } from 'lucide-react';
+import { Square, FolderOpen, Trophy, Trees, BellOff } from 'lucide-react';
 import UserProfileModal from '../components/UserProfileModal';
 // The conversation id rule lives in lib/privateMessages, so the chat and the
 // admin tool cannot end up addressing two different conversations.
@@ -47,7 +47,10 @@ import DocViewer from '../components/docs/DocViewer';
 import QuizSetupModal from '../components/quiz/QuizSetupModal';
 import LiveQuiz from '../components/quiz/LiveQuiz';
 import { subscribeQuiz, isQuizStale } from '../lib/groupQuiz';
-import { notifyGroup } from '../lib/notifications';
+import { notifyGroup, notifyUser } from '../lib/notifications';
+import { useMutes } from '../lib/mutes';
+import MuteButton from '../components/MuteButton';
+import FriendRequestsCard from '../components/FriendRequestsCard';
 import GroupGrove from '../components/GroupGrove';
 import { useFeature } from '../lib/appConfig';
 
@@ -942,14 +945,15 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
       ? { id: replyTo.id, pseudo: replyTo.pseudo, preview: replyTo.preview }
       : null;
     try {
-      await addDoc(collection(db, 'groups', group.id, 'messages'), {
+      const msgRef = await addDoc(collection(db, 'groups', group.id, 'messages'), {
         uid: user.uid, pseudo, text, sentAt, reactions: {},
         ...(mentions.length ? { mentions } : {}),
         ...(replyMeta ? { replyTo: replyMeta } : {}),
         ...extra
       });
-      // Push to the members I @mentioned (only those who opted in are notified).
-      if (mentions.length) notifyGroup(user, { groupId: group.id, kind: 'mention', name: pseudo, detail: text.slice(0, 120), mentions });
+      // Push to the other members (the worker skips those who muted the group,
+      // and turns it into an @mention alert for the members I mentioned).
+      notifyGroup(user, { groupId: group.id, kind: 'message', messageId: msgRef.id });
       // Update the group's last-message preview (for the list).
       updateDoc(doc(db, 'groups', group.id), {
         lastMessage: { uid: user.uid, pseudo, text, type: extra.type || 'text', sentAt },
@@ -1281,6 +1285,7 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
             <span style={{ fontSize: '.62rem', color: 'var(--text-muted)' }}>{t('groups.nOnline', { count: onlineCount })} · {t('groups.membersCount', { count: members.length })}</span>
           </div>
         </div>
+        <MuteButton user={user} type="groups" id={group.id} />
         {docsEnabled && (
           <button onClick={() => setShowGroupDocs(true)} aria-label={t('docs.groupDocsTitle')} title={t('docs.groupDocsTitle')}
             style={{ width: 32, height: 32, borderRadius: 10, border: 'none', background: 'var(--bg-card-hover)', color: 'var(--text-secondary)',
@@ -1645,6 +1650,7 @@ function GroupChat({ group, user, prefs, onClose, onLeave, onDelete, onOpenConv 
 
 function FriendRow({ friend, user, online, preview, unread = 0, onOpen }) {
   const { t, formatDate } = useTranslation();
+  const mutes = useMutes();
   const fColor = `hsl(${(friend.uid?.charCodeAt(0) * 47 || 0) % 360},60%,50%)`;
   let text = t('groups.startConv');
   if (preview) {
@@ -1664,8 +1670,11 @@ function FriendRow({ friend, user, online, preview, unread = 0, onOpen }) {
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <span style={{ fontSize: '.9rem', fontWeight: unread > 0 ? 800 : 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {friend.pseudo}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+            <span style={{ fontSize: '.9rem', fontWeight: unread > 0 ? 800 : 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {friend.pseudo}
+            </span>
+            {mutes.users.has(friend.uid) && <BellOff size={12} color="var(--text-muted)" aria-label={t('mute.muted')} style={{ flexShrink: 0 }} />}
           </span>
           {preview?.sentAt && (
             <span style={{ fontSize: '.62rem', color: unread > 0 ? 'var(--accent)' : 'var(--text-muted)', flexShrink: 0, fontWeight: unread > 0 ? 700 : 400 }}>
@@ -1738,9 +1747,10 @@ function PrivateChat({ friend, user, onClose }) {
     const sentAt = new Date().toISOString();
     const text = input.trim();
     try {
-      await addDoc(collection(db, 'privateMessages', convId, 'messages'), {
+      const msgRef = await addDoc(collection(db, 'privateMessages', convId, 'messages'), {
         uid: user.uid, pseudo, text, sentAt, reactions: {}
       });
+      notifyUser(user, { kind: 'dm', toUid: friend.uid, messageId: msgRef.id });
       set(dbRef(rtdb, `privateTyping/${convId}/${user.uid}`), false);
       setInput('');
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
@@ -1780,6 +1790,7 @@ function PrivateChat({ friend, user, onClose }) {
             {friendOnline ? t('groups.online') : t('groups.offline')}
           </div>
         </div>
+        <MuteButton user={user} type="users" id={friend.uid} />
       </div>
 
       {/* Messages */}
@@ -1852,6 +1863,7 @@ function PrivateChat({ friend, user, onClose }) {
 
 function GroupRow({ group, user, onOpen, unread = 0, session = null }) {
   const { t, formatDate } = useTranslation();
+  const mutes = useMutes();
   const memberCount = (group.memberIds || Object.keys(group.members || {})).length;
   const last = group.lastMessage;
   // A session that is gathering or running earns a badge; a finished one does not.
@@ -1892,6 +1904,7 @@ function GroupRow({ group, user, onOpen, unread = 0, session = null }) {
             <span style={{ fontSize: '.9rem', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {group.name}
             </span>
+            {mutes.groups.has(group.id) && <BellOff size={12} color="var(--text-muted)" aria-label={t('mute.muted')} style={{ flexShrink: 0 }} />}
             {hasLiveSession && (
               <span title={t('groups.sessionRunningBadge')}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
@@ -2239,6 +2252,9 @@ export default function PageGroups({ user, prefs, unreadByGroup = {}, onMarkRead
           )}
         </div>
       </div>
+
+      {/* Pending friend requests — only shown when there are some */}
+      <FriendRequestsCard user={user} />
 
       {/* Filter: all / groups / private */}
       <div style={{ display: 'flex', gap: 4, background: 'var(--bg-card)', padding: 4, borderRadius: 12 }}>

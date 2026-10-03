@@ -7,6 +7,9 @@
  * 2. What to receive (shared by all devices, saved in the worker): daily
  *    reminder (time + days), streak saver, exam countdown (7 / 3 / 1 days),
  *    weekly recap (day + time), group activity (quiz, document, @mention).
+ * 3. Messages & friends (on by default, independent of the reminders' master
+ *    switch): every group message, every private message, friend requests,
+ *    and the list of muted groups / people with a way to unmute them.
  *
  * Every change is saved at once and broadcast to AppPage (window event
  * `blokly:notif-prefs`) so the reminder schedule is recomputed right away.
@@ -14,12 +17,41 @@
 
 import { useEffect, useState } from 'react';
 import { Bell, BellOff, Send, Smartphone, Share } from 'lucide-react';
+import { collection, getDocs, query, where, documentId } from 'firebase/firestore';
+import { db } from '../firebase/config';
 import { useTranslation } from '../i18n';
 import {
   pushSupport, notificationPermission, loadNotificationPrefs, saveNotificationPrefs, sendTestNotification,
   enablePushOnThisDevice, disablePushOnThisDevice, currentSubscription, withDefaults, DEFAULT_NOTIFICATION_PREFS,
+  rememberDeviceChoice,
 } from '../lib/notifications';
+import { loadMutes, useMutes, toggleMute } from '../lib/mutes';
 import { Button } from './ui';
+
+/**
+ * Names for the muted ids: groups from `groups/{id}`, people from the public
+ * leaderboard. Read in batches of 10 (Firestore "in" limit); unknown ids keep
+ * a generic label.
+ */
+function useMutedNames(mutes) {
+  const [names, setNames] = useState({});
+  const ids = [...mutes.groups, ...mutes.users].join(',');
+  useEffect(() => {
+    let alive = true;
+    const read = async (coll, list, field) => {
+      const out = {};
+      for (let i = 0; i < list.length; i += 10) {
+        const snap = await getDocs(query(collection(db, coll), where(documentId(), 'in', list.slice(i, i + 10)))).catch(() => null);
+        snap?.forEach(d => { out[d.id] = d.data()[field] || ''; });
+      }
+      return out;
+    };
+    Promise.all([read('groups', [...mutes.groups], 'name'), read('leaderboard', [...mutes.users], 'pseudo')])
+      .then(([g, u]) => { if (alive) setNames({ ...g, ...u }); });
+    return () => { alive = false; };
+  }, [ids]); // eslint-disable-line react-hooks/exhaustive-deps -- re-read only when the lists change
+  return names;
+}
 
 function Toggle({ checked, onChange, label, description, disabled }) {
   return (
@@ -49,6 +81,9 @@ export default function NotificationSettings({ user }) {
   const [permission, setPermission] = useState(notificationPermission());
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const mutes = useMutes();
+  const mutedNames = useMutedNames(mutes);
+  useEffect(() => { loadMutes(user); }, [user]);
 
   useEffect(() => {
     if (support === 'unavailable') return undefined;
@@ -76,6 +111,7 @@ export default function NotificationSettings({ user }) {
       const result = await enablePushOnThisDevice(user, lang);
       setPermission(notificationPermission());
       if (result === 'granted') {
+        rememberDeviceChoice(user, false);
         setOnThisDevice(true);
         setDevices(n => n + 1);
         await save({ ...prefs, enabled: true });
@@ -91,6 +127,8 @@ export default function NotificationSettings({ user }) {
   async function disable() {
     setBusy(true);
     await disablePushOnThisDevice(user);
+    // Stay off: the app must not re-register this device silently next time.
+    rememberDeviceChoice(user, true);
     setOnThisDevice(false);
     setDevices(n => Math.max(0, n - 1));
     setBusy(false);
@@ -154,7 +192,34 @@ export default function NotificationSettings({ user }) {
 
       {prefs && (
         <div>
-          <div style={{ padding: '4px 0 10px' }}>
+          {/* Messages & friends — on by default, not tied to the reminders switch */}
+          <div style={{ ...row, borderTop: 'none', paddingTop: 4 }}>
+            <div style={{ fontSize: '.8rem', fontWeight: 700, color: 'var(--text-primary)' }}>{t('notifSettings.social')}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <Toggle checked={prefs.social.groupMessages} onChange={v => set('social', 'groupMessages', v)}
+                label={t('notifSettings.socialGroups')} description={t('notifSettings.socialGroupsHint')} />
+              <Toggle checked={prefs.group.mention} onChange={v => set('group', 'mention', v)}
+                label={t('notifSettings.groupMention')} description={t('notifSettings.mentionHint')} />
+              <Toggle checked={prefs.social.dms} onChange={v => set('social', 'dms', v)} label={t('notifSettings.socialDms')} />
+              <Toggle checked={prefs.social.friendRequests} onChange={v => set('social', 'friendRequests', v)} label={t('notifSettings.socialFriends')} />
+            </div>
+            {(mutes.groups.size > 0 || mutes.users.size > 0) && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+                <div style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--text-muted)' }}>{t('mute.listTitle')}</div>
+                {[...[...mutes.groups].map(id => ['groups', id]), ...[...mutes.users].map(id => ['users', id])].map(([type, id]) => (
+                  <div key={type + id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <BellOff size={13} color="var(--text-muted)" aria-hidden="true" />
+                    <span style={{ flex: 1, minWidth: 0, fontSize: '.78rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {mutedNames[id] || t(type === 'groups' ? 'mute.unknownGroup' : 'mute.unknownUser')}
+                    </span>
+                    <Button size="sm" variant="ghost" onClick={() => toggleMute(user, type, id, lang)}>{t('mute.unmute')}</Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ padding: '14px 0 10px', borderTop: '1px solid var(--border)' }}>
             <Toggle checked={master} onChange={v => save({ ...prefs, enabled: v })} label={t('notifSettings.master')} description={t('notifSettings.masterHint')} />
           </div>
 
@@ -212,7 +277,6 @@ export default function NotificationSettings({ user }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <Toggle disabled={!master} checked={prefs.group.quiz} onChange={v => set('group', 'quiz', v)} label={t('notifSettings.groupQuiz')} />
               <Toggle disabled={!master} checked={prefs.group.doc} onChange={v => set('group', 'doc', v)} label={t('notifSettings.groupDoc')} />
-              <Toggle disabled={!master} checked={prefs.group.mention} onChange={v => set('group', 'mention', v)} label={t('notifSettings.groupMention')} />
             </div>
           </div>
         </div>

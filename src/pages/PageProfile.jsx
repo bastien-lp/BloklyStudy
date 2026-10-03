@@ -7,7 +7,7 @@
  * Firestore touchpoints:
  *   users/{uid}/data/main          : xp/level/streak/profile/photoURL (own)
  *   leaderboard/{uid}              : pseudo (own)
- *   friendRequests/{toUid}/requests/{myUid}  : send/accept/decline
+ *   friendRequests/{toUid}/requests/{myUid}  : send/accept/decline (through lib/friends.js)
  *   friends/{uid}/list, friends/{otherUid}/list : add/remove (both sides)
  *
  * NOTE: several writes target OTHER users' subcollections (friend requests and
@@ -21,13 +21,14 @@ import { useState, useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  doc, getDocs, setDoc, deleteDoc, updateDoc,
+  doc, getDocs, deleteDoc, updateDoc,
   collection, onSnapshot,
 } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
 import { db, rtdb, auth } from '../firebase/config';
 import { ref as dbRef, onValue } from 'firebase/database';
 import UserProfileModal from '../components/UserProfileModal';
+import { sendFriendRequest, acceptFriendRequest, declineFriendRequest } from '../lib/friends';
 import { useTranslation } from '../i18n';
 import { reportSaveError, reportError } from '../lib/notify';
 import { fileToAvatarDataURL, saveProfilePhoto, resolveOwnPhoto } from '../lib/profilePhoto';
@@ -230,27 +231,19 @@ export default function PageProfile({ user, onOpenConv }) {
   }
 
   async function sendRequest(toUid, toPseudo) {
-    const myPseudo = user.displayName || user.email?.split('@')[0] || 'Anonyme';
     try {
-      await setDoc(doc(db, 'friendRequests', toUid, 'requests', user.uid), {
-        from: user.uid, fromPseudo: myPseudo, to: toUid, toPseudo,
-        sentAt: new Date().toISOString(), status: 'pending',
-      });
+      await sendFriendRequest(user, toUid, toPseudo);
       setSearchResult(null); setSearchQuery('');
     } catch (e) { reportSaveError(e, 'Profile — send request'); }
   }
 
   async function acceptRequest(req) {
-    const myPseudo = user.displayName || user.email?.split('@')[0] || 'Anonyme';
-    try {
-      await setDoc(doc(db, 'friends', user.uid, 'list', req.from), { uid: req.from, pseudo: req.fromPseudo, addedAt: new Date().toISOString() });
-      await setDoc(doc(db, 'friends', req.from, 'list', user.uid), { uid: user.uid, pseudo: myPseudo, addedAt: new Date().toISOString() });
-      await deleteDoc(doc(db, 'friendRequests', user.uid, 'requests', req.id));
-    } catch (e) { reportSaveError(e, 'Profile — accept request'); }
+    try { await acceptFriendRequest(user, req); }
+    catch (e) { reportSaveError(e, 'Profile — accept request'); }
   }
 
   async function declineRequest(reqId) {
-    try { await deleteDoc(doc(db, 'friendRequests', user.uid, 'requests', reqId)); }
+    try { await declineFriendRequest(user, reqId); }
     catch (e) { reportSaveError(e, 'Profile — decline request'); }
   }
 

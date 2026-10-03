@@ -13,7 +13,8 @@
  */
 
 import { collection, addDoc } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { auth, db } from '../firebase/config';
+import { notifyUser } from './notifications';
 
 /**
  * Deterministic convId: always the same for a pair of users, whichever of the
@@ -46,12 +47,14 @@ export async function sendPrivateMessage({ fromUid, fromPseudo, toUid, text }) {
   if (!body) throw new Error('sendPrivateMessage: empty message');
 
   const convId = convIdFor(fromUid, toUid);
-  await addDoc(collection(db, 'privateMessages', convId, 'messages'), {
+  const ref = await addDoc(collection(db, 'privateMessages', convId, 'messages'), {
     uid: fromUid,
     pseudo: fromPseudo || '',
     text: body,
     sentAt: new Date().toISOString(),
     reactions: {},
   });
+  // Push to the recipient, like a message typed in the chat (best-effort).
+  if (auth.currentUser?.uid === fromUid) notifyUser(auth.currentUser, { kind: 'dm', toUid, messageId: ref.id });
   return convId;
 }

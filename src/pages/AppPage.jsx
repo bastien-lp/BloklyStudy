@@ -36,7 +36,11 @@ import { startPresence, clearPresence } from '../lib/presence';
 import { isAdmin, ADMIN_UIDS } from '../lib/admin';
 import { auditBadges } from '../lib/badgeAudit';
 import InstallPrompt from '../components/InstallPrompt';
-import { pushSupport, loadNotificationPrefs, computeSchedule, syncSchedule } from '../lib/notifications';
+import { pushSupport, loadNotificationPrefs, computeSchedule, syncSchedule, ensurePushSubscription } from '../lib/notifications';
+import { loadMutes, useMutes } from '../lib/mutes';
+import { subscribeFriendRequests } from '../lib/friends';
+import NotificationPrompt from '../components/NotificationPrompt';
+import FriendRequestAlert from '../components/FriendRequestAlert';
 
 // Each tab is a separate chunk, loaded the first time it is opened. This keeps
 // the initial authenticated bundle small — a user who never opens Stats or the
@@ -467,7 +471,7 @@ function PageFallback() {
 }
 
 export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked, setDevUnlocked, features = {} }) {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const [activeTab, setActiveTab] = useState(() => tabFromUrl() || 'planning');
   // What the tab bar offers, and what a closed tab does (lib/features.js).
   const admin = isAdmin(user);
@@ -492,6 +496,19 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
   const [unreadTotal, setUnreadTotal] = useState(0);   // total unread across all groups
   const [unreadByGroup, setUnreadByGroup] = useState({}); // { groupId: count }
   const [unreadPrivate, setUnreadPrivate] = useState(0);  // number of DM convs with unread
+  const [unreadPrivateFrom, setUnreadPrivateFrom] = useState([]); // uids of those conversations' partners
+  const [friendRequests, setFriendRequests] = useState([]); // incoming, pending
+  const mutes = useMutes();
+
+  // Social notifications: the shared mute lists, this device's push
+  // registration (silent, only if the browser already allows it — otherwise
+  // NotificationPrompt asks), and the incoming friend requests.
+  useEffect(() => {
+    if (!user) return undefined;
+    loadMutes(user);
+    ensurePushSubscription(user, lang).catch(() => {});
+    return subscribeFriendRequests(user, setFriendRequests);
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps -- once per account, not per language change
 
   const [pseudo, setPseudo] = useState(user?.displayName || user?.email?.split('@')[0] || 'U');
   // Top-bar avatar. Read from Firestore (see lib/profilePhoto.js), not Auth.
@@ -617,13 +634,14 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
     const previews = {}; // { convId: lastMessage }
 
     function recompute() {
-      let count = 0;
+      const from = [];
       for (const [cid, last] of Object.entries(previews)) {
         if (!last) continue;
         const lastRead = lastReadMap[cid];
-        if (last.uid !== user.uid && (!lastRead || last.sentAt > lastRead)) count++;
+        if (last.uid !== user.uid && (!lastRead || last.sentAt > lastRead)) from.push(last.uid);
       }
-      setUnreadPrivate(count);
+      setUnreadPrivate(from.length);
+      setUnreadPrivateFrom(from);
     }
 
     // 1. Watch the friend list, then the last message of each conversation.
@@ -682,14 +700,24 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
 
   const xpPct = (xp % 500) / 500 * 100;
   const ActivePage = PAGE_MAP[activeTab] || PAGE_MAP.planning;
-  const unreadBadge = unreadTotal + unreadPrivate; // combined groups + DMs
+  // Groups badge: unread messages (groups + DMs) and pending friend requests,
+  // which are answered from the Groups page.
+  const unreadBadge = unreadTotal + unreadPrivate + friendRequests.length;
 
-  // Play a sound when the unread count increases (new message received).
+  // Play a sound when something new arrives: a message in a conversation that
+  // is not muted, or a friend request. Muted ones still count as unread.
+  const audible = Object.entries(unreadByGroup).reduce((n, [gid, c]) => n + (mutes.groups.has(gid) ? 0 : c), 0)
+    + unreadPrivateFrom.filter(uid => !mutes.users.has(uid)).length
+    + friendRequests.length;
   const prevUnread = useRef(null);
+  const prevMutes = useRef(mutes);
   useEffect(() => {
-    if (prevUnread.current !== null && unreadBadge > prevUnread.current) playPing();
-    prevUnread.current = unreadBadge;
-  }, [unreadBadge]);
+    // Unmuting a conversation that has unread messages is not a new message.
+    const mutesChanged = prevMutes.current !== mutes;
+    if (prevUnread.current !== null && audible > prevUnread.current && !mutesChanged) playPing();
+    prevUnread.current = audible;
+    prevMutes.current = mutes;
+  }, [audible, mutes]);
 
   async function addSubject(name, color, date, chaps, chapNames = [], teacher = '') {
     if (!name.trim()) return;
@@ -844,11 +872,19 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
               fontSize: '.75rem', fontWeight: 700, color: '#fff', cursor: 'pointer',
               border: activeTab === 'profile' ? '2px solid var(--accent)' : '1px solid rgba(255,255,255,.15)',
               boxShadow: activeTab === 'profile' ? '0 0 10px var(--accent-glow)' : 'none',
-              flexShrink: 0, transition: 'border .2s, box-shadow .2s' }}>
+              flexShrink: 0, transition: 'border .2s, box-shadow .2s', position: 'relative' }}>
             {myPhoto ? (
               <img src={myPhoto} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
             ) : (
               pseudo[0].toUpperCase()
+            )}
+            {friendRequests.length > 0 && (
+              <span aria-label={t('friendReq.title', { count: friendRequests.length })}
+                style={{ position: 'absolute', top: -4, right: -4, minWidth: 15, height: 15, borderRadius: 8, padding: '0 3px',
+                  background: '#E74C3C', color: '#fff', fontSize: '.5rem', fontWeight: 800, lineHeight: 1,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--bg-nav)' }}>
+                {friendRequests.length}
+              </span>
             )}
           </motion.div>
 
@@ -1104,6 +1140,8 @@ export default function AppPage({ user, prefs, setPrefs, setUserXp, devUnlocked,
           time) even while the Groups tab is unmounted. */}
       <GroupSessionEngine user={user} />
       <InstallPrompt />
+      <NotificationPrompt user={user} />
+      {user && <FriendRequestAlert user={user} requests={friendRequests} onOpen={() => setActiveTab('groups')} />}
 
       <style>{`
         ::-webkit-scrollbar { display:none; }
